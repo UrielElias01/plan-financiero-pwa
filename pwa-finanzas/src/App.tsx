@@ -31,6 +31,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  PlayCircle,
   Plus,
   RefreshCcw,
   Settings,
@@ -95,6 +96,15 @@ type GuideTopic = {
   tip: string;
   icon: LucideIcon;
   accent: string;
+};
+
+type GuidedTourStep = {
+  view: ViewId;
+  title: string;
+  intro: string;
+  focus: string;
+  action: string;
+  outcome: string;
 };
 
 const guideTopics: GuideTopic[] = [
@@ -215,6 +225,65 @@ const guideTopics: GuideTopic[] = [
   },
 ];
 
+const guidedTourSteps: GuidedTourStep[] = [
+  {
+    view: "dashboard",
+    title: "Panorama general",
+    intro: "Empieza aqui para entender si tu plan va sano antes de tocar numeros.",
+    focus: "Mira las tarjetas superiores, las alertas y la grafica de ahorro/flujo.",
+    action: "Si la app esta en ceros, importa tu respaldo privado desde Inicio o Reportes.",
+    outcome: "Sales con una idea clara de que quincena o mes necesita atencion.",
+  },
+  {
+    view: "settings",
+    title: "Ajustes base",
+    intro: "Aqui se guardan los supuestos permanentes que alimentan el resto del plan.",
+    focus: "Ahorro actual, renta apartada, sueldo, renta mensual, comida/TDC por defecto y sync.",
+    action: "Modifica solo lo que cambio de forma estable y presiona Guardar ajustes.",
+    outcome: "La app recalcula usando tus bases reales sin mezclar saldos intermedios.",
+  },
+  {
+    view: "periods",
+    title: "Quincenas",
+    intro: "Esta pantalla conserva el modelo correcto: cada pago cubre la quincena siguiente.",
+    focus: "Sueldo, ingresos, renta, servicios, cargos TDC y pago de tarjeta por quincena.",
+    action: "Abre una quincena, ajusta el campo puntual y guarda.",
+    outcome: "Ves como cambia flujo y ahorro sin borrar el historial.",
+  },
+  {
+    view: "transactions",
+    title: "Movimientos nuevos",
+    intro: "Usa esta pantalla cuando haces una compra, gasto o ingreso nuevo.",
+    focus: "Medio de pago, quincena, dividir con pareja y meses sin intereses.",
+    action: "Captura el total real; si fue compartido, marca Dividir con mi pareja.",
+    outcome: "La compra se reparte automaticamente en pagos futuros si fue TDC/MSI.",
+  },
+  {
+    view: "card",
+    title: "Tarjeta",
+    intro: "Aqui confirmas como se ve la deuda por mes y que parte te toca pagar.",
+    focus: "Compara total, parte tuya y saldo no recurrente en cada mes.",
+    action: "Si un mes no cuadra, regresa a Movimientos o Quincenas para corregir el origen.",
+    outcome: "Evitas sorpresas en el pago de tarjeta.",
+  },
+  {
+    view: "reports",
+    title: "Reportes y respaldos",
+    intro: "Cuando termines cambios importantes, revisa el resumen mensual y guarda respaldo.",
+    focus: "Ingresos, gastos efectivo, pago TDC, flujo y ahorro cierre.",
+    action: "Exporta JSON como respaldo completo o CSV si quieres analizar en Excel.",
+    outcome: "Te quedas con evidencia de la version actual de tu plan.",
+  },
+  {
+    view: "guide",
+    title: "Manual y ayuda contextual",
+    intro: "Este manual queda como referencia permanente cuando se te olvide que hace algo.",
+    focus: "Tarjetas de cada pantalla, guia rapida y boton Ayuda en el encabezado.",
+    action: "Abre una tarjeta del manual o usa Ayuda desde cualquier seccion.",
+    outcome: "Puedes volver al paso a paso sin depender de memoria ni del chat.",
+  },
+];
+
 const emptyRecurring: Omit<RecurringItem, "id"> & { id?: string } = {
   id: "",
   name: "",
@@ -322,6 +391,8 @@ export function App() {
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideTopicId, setGuideTopicId] = useState<ViewId | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourStepIndex, setTourStepIndex] = useState(0);
   const [periodDraft, setPeriodDraft] = useState<Period | null>(null);
   const [recurringDraft, setRecurringDraft] = useState(emptyRecurring);
   const [syncDraft, setSyncDraft] = useState(cloneSeed().sync);
@@ -336,6 +407,7 @@ export function App() {
   const monthly = useMemo(() => calculateMonthlyFor(state, periods), [state, periods]);
   const activeNav = navItems.find((item) => item.id === view) || navItems[0];
   const activeGuide = guideTopics.find((topic) => topic.id === (guideTopicId || view)) || guideTopics[0];
+  const activeTourStep = guidedTourSteps[tourStepIndex] || guidedTourSteps[0];
 
   useEffect(() => {
     loadState()
@@ -393,6 +465,27 @@ export function App() {
     const next = !sidebarCollapsed;
     setSidebarCollapsed(next);
     localStorage.setItem("pf-sidebar-collapsed", next ? "true" : "false");
+  }
+
+  function goToTourStep(index: number) {
+    const nextIndex = Math.max(0, Math.min(index, guidedTourSteps.length - 1));
+    const step = guidedTourSteps[nextIndex];
+    setTourStepIndex(nextIndex);
+    setView(step.view);
+    setMobileMenu(false);
+    window.setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 60);
+  }
+
+  function startGuidedTour(index = 0) {
+    setGuideOpen(false);
+    setQuickActionsOpen(false);
+    setTourOpen(true);
+    goToTourStep(index);
+  }
+
+  function closeGuidedTour() {
+    setTourOpen(false);
+    showToast("Tour guiado cerrado");
   }
 
   async function handleInstall() {
@@ -711,6 +804,10 @@ export function App() {
                   <BookOpen size={16} />
                   Manual de uso
                 </button>
+                <button className="button-ghost mt-2 w-full border-white/20 bg-white/10 text-white" type="button" onClick={() => startGuidedTour()}>
+                  <PlayCircle size={16} />
+                  Tour guiado
+                </button>
                 {installPrompt ? (
                   <button className="button-ghost mt-4 w-full border-white/20 bg-white/10 text-white" type="button" onClick={handleInstall}>
                     Instalar app
@@ -744,6 +841,10 @@ export function App() {
               >
                 <CircleHelp size={18} />
                 Ayuda
+              </button>
+              <button className="button-secondary" type="button" onClick={() => startGuidedTour()}>
+                <PlayCircle size={18} />
+                Tour
               </button>
               <button className="button-primary" type="button" onClick={() => setView("transactions")}>
                 <Plus size={18} />
@@ -817,11 +918,13 @@ export function App() {
             {view === "guide" ? (
               <ManualView
                 topics={guideTopics}
+                tourSteps={guidedTourSteps}
                 onNavigate={setView}
                 onOpenTopic={(topicId) => {
                   setGuideTopicId(topicId);
                   setGuideOpen(true);
                 }}
+                onStartTour={startGuidedTour}
               />
             ) : null}
           </section>
@@ -835,6 +938,7 @@ export function App() {
           setQuickActionsOpen(false);
           setView(next);
         }}
+        onStartTour={() => startGuidedTour()}
         onExport={() => {
           setQuickActionsOpen(false);
           exportStateJson(state, today);
@@ -850,6 +954,24 @@ export function App() {
           setGuideOpen(false);
           setView("guide");
         }}
+      />
+
+      <GuidedTourPanel
+        open={tourOpen}
+        step={activeTourStep}
+        stepIndex={tourStepIndex}
+        totalSteps={guidedTourSteps.length}
+        onClose={closeGuidedTour}
+        onPrevious={() => goToTourStep(tourStepIndex - 1)}
+        onNext={() => {
+          if (tourStepIndex >= guidedTourSteps.length - 1) {
+            closeGuidedTour();
+            setView("guide");
+            return;
+          }
+          goToTourStep(tourStepIndex + 1);
+        }}
+        onJump={goToTourStep}
       />
 
       <PeriodModal
@@ -1514,12 +1636,16 @@ function SettingsView({
 
 function ManualView({
   topics,
+  tourSteps,
   onNavigate,
   onOpenTopic,
+  onStartTour,
 }: {
   topics: GuideTopic[];
+  tourSteps: GuidedTourStep[];
   onNavigate: (view: ViewId) => void;
   onOpenTopic: (view: ViewId) => void;
+  onStartTour: (index?: number) => void;
 }) {
   const flow = [
     "Importa tu respaldo privado o captura tus ajustes base.",
@@ -1545,6 +1671,39 @@ function ManualView({
           <Compass className="mb-4" />
           <strong className="block text-2xl font-black">Ruta sugerida</strong>
           <p className="mt-2 text-sm text-white/70">Empieza por el estado general y baja al detalle solo si algo no cuadra.</p>
+          <button className="button-ghost mt-5 w-full border-white/20 bg-white/10 text-white" type="button" onClick={() => onStartTour(0)}>
+            <PlayCircle size={18} />
+            Iniciar tour guiado
+          </button>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="eyebrow">Guiado por la app</p>
+            <h3 className="text-2xl font-black text-navy">Tour paso a paso</h3>
+            <p className="mt-2 text-sm text-slate-500">
+              El tour abre una tarjeta flotante y va cambiando de pantalla para mostrarte que revisar en cada parte.
+            </p>
+          </div>
+          <button className="button-primary" type="button" onClick={() => onStartTour(0)}>
+            <PlayCircle size={18} />
+            Empezar ahora
+          </button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {tourSteps.map((step, index) => (
+            <button key={`${step.view}-${step.title}`} className="tour-step-card" type="button" onClick={() => onStartTour(index)}>
+              <span className="grid h-9 w-9 place-items-center rounded-2xl bg-gradient-to-br from-ocean to-teal text-sm font-black text-white">
+                {index + 1}
+              </span>
+              <span>
+                <strong className="block text-navy">{step.title}</strong>
+                <small className="mt-1 block text-slate-500">{step.focus}</small>
+              </span>
+            </button>
+          ))}
         </div>
       </section>
 
@@ -1688,15 +1847,107 @@ function GuideModal({
   );
 }
 
+function GuidedTourPanel({
+  open,
+  step,
+  stepIndex,
+  totalSteps,
+  onClose,
+  onPrevious,
+  onNext,
+  onJump,
+}: {
+  open: boolean;
+  step: GuidedTourStep;
+  stepIndex: number;
+  totalSteps: number;
+  onClose: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+  onJump: (index: number) => void;
+}) {
+  if (!open) return null;
+  const nav = navItems.find((item) => item.id === step.view) || navItems[0];
+  const Icon = nav.icon;
+  const isLast = stepIndex === totalSteps - 1;
+
+  return (
+    <div className="pointer-events-none fixed inset-0 z-[95]">
+      <div className="absolute inset-0 bg-gradient-to-br from-navy/12 via-transparent to-teal/12" />
+      <aside className="pointer-events-auto absolute bottom-4 right-4 w-[min(28rem,calc(100vw-2rem))] overflow-hidden rounded-[2rem] border border-white/70 bg-white/95 shadow-glow backdrop-blur-2xl">
+        <div className="bg-gradient-to-br from-navy via-ocean to-teal p-5 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex gap-3">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20">
+                <Icon size={24} />
+              </span>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-white/70">
+                  Paso {stepIndex + 1} de {totalSteps} | {nav.label}
+                </p>
+                <h3 className="mt-1 text-2xl font-black">{step.title}</h3>
+              </div>
+            </div>
+            <button className="grid h-9 w-9 place-items-center rounded-full bg-white/15" type="button" onClick={onClose} aria-label="Cerrar tour guiado">
+              <X size={18} />
+            </button>
+          </div>
+          <p className="mt-4 text-sm text-white/78">{step.intro}</p>
+        </div>
+
+        <div className="grid gap-4 p-5">
+          <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
+            <p className="eyebrow">Mira esto</p>
+            <p className="mt-2 text-sm text-slate-600">{step.focus}</p>
+          </div>
+          <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4">
+            <p className="eyebrow text-emerald-700">Haz esto</p>
+            <p className="mt-2 text-sm text-emerald-950">{step.action}</p>
+          </div>
+          <div className="rounded-3xl border border-amber-100 bg-amber-50 p-4">
+            <p className="eyebrow text-amber-700">Resultado esperado</p>
+            <p className="mt-2 text-sm text-amber-950">{step.outcome}</p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex gap-1">
+              {Array.from({ length: totalSteps }, (_, index) => (
+                <button
+                  key={index}
+                  className={`h-2.5 rounded-full transition-all ${index === stepIndex ? "w-8 bg-teal" : "w-2.5 bg-blue-200 hover:bg-ocean/50"}`}
+                  type="button"
+                  onClick={() => onJump(index)}
+                  aria-label={`Ir al paso ${index + 1}`}
+                />
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button className="button-ghost px-3 py-2" type="button" onClick={onPrevious} disabled={stepIndex === 0}>
+                Anterior
+              </button>
+              <button className="button-primary px-3 py-2" type="button" onClick={onNext}>
+                {isLast ? "Terminar" : "Siguiente"}
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 function QuickActionsModal({
   open,
   onClose,
   onView,
+  onStartTour,
   onExport,
 }: {
   open: boolean;
   onClose: () => void;
   onView: (view: ViewId) => void;
+  onStartTour: () => void;
   onExport: () => void;
 }) {
   return (
@@ -1709,6 +1960,7 @@ function QuickActionsModal({
           <ActionTile title="Nuevo movimiento" text="Agregar gasto, ingreso o compra MSI." onClick={() => onView("transactions")} />
           <ActionTile title="Editar quincenas" text="Ajustar renta, comida, sueldo o pagos TDC." onClick={() => onView("periods")} />
           <ActionTile title="Sync y ajustes" text="Configurar respaldo cifrado y supuestos." onClick={() => onView("settings")} />
+          <ActionTile title="Tour guiado" text="La app te lleva paso a paso por cada pantalla." onClick={onStartTour} />
           <ActionTile title="Manual de uso" text="Ver pasos guiados y que modifica cada pantalla." onClick={() => onView("guide")} />
           <ActionTile title="Exportar respaldo" text="Descargar JSON actual de la app." onClick={onExport} />
         </div>

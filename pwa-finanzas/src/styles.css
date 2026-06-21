@@ -153,6 +153,10 @@
   .guide-card {
     @apply glass relative overflow-hidden rounded-[1.6rem] p-5 transition hover:-translate-y-1 hover:border-ocean/40 hover:shadow-glow;
   }
+
+  .tour-step-card {
+    @apply flex gap-3 rounded-3xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 p-4 text-left transition hover:-translate-y-1 hover:border-ocean/50 hover:shadow-card;
+  }
 }
 
 @keyframes floatOrb {

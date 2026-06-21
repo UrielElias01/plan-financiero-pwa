@@ -10,6 +10,7 @@ PWA offline-first para administrar un plan financiero quincenal. El frontend est
 - Calendario de pagos de tarjeta y MSI.
 - Reportes mensuales con graficas.
 - Manual dinamico con ayuda contextual por pantalla.
+- Tour guiado que recorre la app paso a paso.
 - Importacion/exportacion JSON.
 - Exportacion CSV.
 - Persistencia local en IndexedDB.
@@ -19,6 +20,8 @@ PWA offline-first para administrar un plan financiero quincenal. El frontend est
 ## Manual dentro de la app
 
 La seccion `Manual` explica para que sirve cada pantalla, que campos puedes modificar y un paso a paso recomendado. Ademas, el boton `Ayuda` del encabezado abre una guia rapida contextual segun la pantalla actual.
+
+El boton `Tour` inicia una guia flotante que cambia de pantalla conforme avanzas, para mostrarte que revisar, que accion tomar y cual es el resultado esperado en cada paso.
 
 ## Desarrollo local
 
