@@ -14,24 +14,31 @@
     <title>Plan Financiero</title>
   </head>
   <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <div class="mobile-scrim" id="mobileScrim" hidden></div>
+
     <div class="app-shell">
-      <aside class="sidebar">
+      <aside class="sidebar" id="sidebar">
         <div class="brand">
           <div class="brand-mark">PF</div>
           <div>
             <h1>Plan Financiero</h1>
             <p>Quincenas, TDC y ahorros</p>
           </div>
+          <button id="sidebarToggle" class="icon-button sidebar-toggle" type="button" aria-label="Ocultar menu">
+            <span></span>
+          </button>
         </div>
 
         <nav class="nav" aria-label="Secciones">
-          <button class="nav-item active" data-view="dashboard">Inicio</button>
-          <button class="nav-item" data-view="periods">Quincenas</button>
-          <button class="nav-item" data-view="transactions">Movimientos</button>
-          <button class="nav-item" data-view="recurring">Recurrentes</button>
-          <button class="nav-item" data-view="card">Tarjeta</button>
-          <button class="nav-item" data-view="reports">Reportes</button>
-          <button class="nav-item" data-view="settings">Ajustes</button>
+          <button class="nav-item active" data-view="dashboard" data-short="IN"><span>Inicio</span></button>
+          <button class="nav-item" data-view="periods" data-short="Q"><span>Quincenas</span></button>
+          <button class="nav-item" data-view="transactions" data-short="M"><span>Movimientos</span></button>
+          <button class="nav-item" data-view="recurring" data-short="R"><span>Recurrentes</span></button>
+          <button class="nav-item" data-view="card" data-short="TC"><span>Tarjeta</span></button>
+          <button class="nav-item" data-view="reports" data-short="RP"><span>Reportes</span></button>
+          <button class="nav-item" data-view="settings" data-short="AJ"><span>Ajustes</span></button>
         </nav>
 
         <div class="install-card">
@@ -48,12 +55,29 @@
             <h2 id="viewTitle">Inicio</h2>
           </div>
           <div class="top-actions">
+            <button id="mobileMenuButton" class="ghost-button mobile-menu-button" type="button">Menu</button>
             <button id="quickAddButton" class="primary-button">Agregar gasto</button>
+            <button id="quickActionsButton" class="ghost-button">Acciones</button>
             <button id="saveSnapshotButton" class="secondary-button">Guardar respaldo</button>
           </div>
         </header>
 
         <section id="dashboard" class="view active-view">
+          <section class="hero-banner">
+            <div>
+              <p class="eyebrow">Centro financiero</p>
+              <h3>Tu plan quincenal, tarjeta y ahorros en un solo tablero.</h3>
+              <p>
+                Edita supuestos, agrega movimientos y sincroniza un respaldo cifrado sin volver al Excel.
+              </p>
+            </div>
+            <div class="orbital-card">
+              <span>Sync cifrado</span>
+              <strong>Cloudflare KV</strong>
+              <small>Listo para subir o bajar respaldos</small>
+            </div>
+          </section>
+
           <div class="hero-grid">
             <article class="hero-card">
               <span>Ahorro actual</span>
@@ -490,6 +514,51 @@
         <menu>
           <button value="cancel" class="ghost-button">Cancelar</button>
           <button id="periodSaveButton" value="default" class="primary-button">Guardar</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="quickActionsDialog">
+      <form method="dialog" class="modal-form action-modal">
+        <div class="modal-heading">
+          <p class="eyebrow">Acciones rapidas</p>
+          <h3>Que quieres hacer ahora?</h3>
+          <p>Atajos para moverte sin buscar entre secciones.</p>
+        </div>
+        <div class="action-grid">
+          <button value="transactions" class="action-tile" data-modal-view="transactions" type="button">
+            <strong>Nuevo movimiento</strong>
+            <span>Agregar gasto, ingreso o compra MSI.</span>
+          </button>
+          <button value="periods" class="action-tile" data-modal-view="periods" type="button">
+            <strong>Editar quincenas</strong>
+            <span>Ajustar renta, comida, sueldo o pagos TDC.</span>
+          </button>
+          <button value="settings" class="action-tile" data-modal-view="settings" type="button">
+            <strong>Sync y ajustes</strong>
+            <span>Configurar respaldo cifrado y supuestos.</span>
+          </button>
+          <button id="quickExportButton" value="export" class="action-tile" type="button">
+            <strong>Exportar respaldo</strong>
+            <span>Descargar JSON actual de la app.</span>
+          </button>
+        </div>
+        <menu>
+          <button value="cancel" class="ghost-button">Cerrar</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="confirmDialog">
+      <form method="dialog" class="modal-form confirm-modal">
+        <div class="modal-heading">
+          <p class="eyebrow">Confirmar</p>
+          <h3 id="confirmTitle">Estas seguro?</h3>
+          <p id="confirmMessage">Esta accion necesita confirmacion.</p>
+        </div>
+        <menu>
+          <button value="cancel" class="ghost-button">Cancelar</button>
+          <button id="confirmAcceptButton" value="confirm" class="primary-button danger-button">Confirmar</button>
         </menu>
       </form>
     </dialog>

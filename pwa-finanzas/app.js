@@ -269,11 +269,46 @@ function showToast(message) {
   window.setTimeout(() => toast.classList.remove("visible"), 2200);
 }
 
+function setSidebarCollapsed(collapsed) {
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+  localStorage.setItem("pf-sidebar-collapsed", collapsed ? "true" : "false");
+  $("#sidebarToggle").setAttribute("aria-label", collapsed ? "Mostrar menu" : "Ocultar menu");
+}
+
+function setMobileMenu(open) {
+  document.body.classList.toggle("menu-open", open);
+  $("#mobileScrim").hidden = !open;
+}
+
+function openDialog(dialog) {
+  if (!dialog.open) dialog.showModal();
+}
+
+function closeDialog(dialog) {
+  if (dialog.open) dialog.close();
+}
+
+function confirmAction({ title, message, confirmText = "Confirmar" }) {
+  const dialog = $("#confirmDialog");
+  $("#confirmTitle").textContent = title;
+  $("#confirmMessage").textContent = message;
+  $("#confirmAcceptButton").textContent = confirmText;
+
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "confirm"), { once: true });
+    openDialog(dialog);
+  });
+}
+
 function setView(viewId) {
   $$(".view").forEach((view) => view.classList.toggle("active-view", view.id === viewId));
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === viewId));
-  const label = document.querySelector(`[data-view="${viewId}"]`)?.textContent || "Inicio";
+  const navItem = document.querySelector(`[data-view="${viewId}"]`);
+  const label = navItem?.querySelector("span")?.textContent || navItem?.textContent || "Inicio";
   $("#viewTitle").textContent = label;
+  document.body.dataset.activeView = viewId;
+  setMobileMenu(false);
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function renderDashboard(periods, monthly) {
@@ -660,6 +695,9 @@ function renderSyncSettings() {
 }
 
 function wireNavigation() {
+  const collapsed = localStorage.getItem("pf-sidebar-collapsed") === "true";
+  setSidebarCollapsed(collapsed);
+
   $$(".nav-item").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.view));
   });
@@ -667,6 +705,19 @@ function wireNavigation() {
     button.addEventListener("click", () => setView(button.dataset.viewTarget));
   });
   $("#quickAddButton").addEventListener("click", () => setView("transactions"));
+  $("#quickActionsButton").addEventListener("click", () => openDialog($("#quickActionsDialog")));
+  $("#sidebarToggle").addEventListener("click", () => {
+    if (window.matchMedia("(max-width: 1100px)").matches) {
+      setMobileMenu(false);
+      return;
+    }
+    setSidebarCollapsed(!document.body.classList.contains("sidebar-collapsed"));
+  });
+  $("#mobileMenuButton").addEventListener("click", () => setMobileMenu(true));
+  $("#mobileScrim").addEventListener("click", () => setMobileMenu(false));
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setMobileMenu(false);
+  });
 }
 
 function wireForms() {
@@ -744,6 +795,23 @@ function wireForms() {
 
 function wireActions() {
   document.body.addEventListener("click", async (event) => {
+    const modalViewButton = event.target.closest("[data-modal-view]");
+    if (modalViewButton) {
+      closeDialog($("#quickActionsDialog"));
+      setView(modalViewButton.dataset.modalView);
+      if (modalViewButton.dataset.modalView === "transactions") {
+        window.setTimeout(() => $("#transactionForm").elements.description.focus(), 120);
+      }
+      return;
+    }
+
+    if (event.target.closest("#quickExportButton")) {
+      closeDialog($("#quickActionsDialog"));
+      downloadText(`plan-financiero-respaldo-${today}.json`, JSON.stringify(state, null, 2));
+      showToast("Respaldo exportado");
+      return;
+    }
+
     const editPeriodId = event.target.dataset.editPeriod;
     if (editPeriodId) {
       const period = getPeriod(editPeriodId);
@@ -768,6 +836,12 @@ function wireActions() {
 
     const deleteTransactionId = event.target.dataset.deleteTransaction;
     if (deleteTransactionId) {
+      const confirmed = await confirmAction({
+        title: "Borrar movimiento",
+        message: "Se quitara el movimiento y se recalculara la quincena relacionada.",
+        confirmText: "Borrar",
+      });
+      if (!confirmed) return;
       const transaction = state.transactions.find((entry) => entry.id === deleteTransactionId);
       state.transactions = state.transactions.filter((entry) => entry.id !== deleteTransactionId);
       if (transaction) updatePeriodFromTransaction(transaction, -1);
@@ -786,6 +860,12 @@ function wireActions() {
 
     const deleteRecurringId = event.target.dataset.deleteRecurring;
     if (deleteRecurringId) {
+      const confirmed = await confirmAction({
+        title: "Borrar recurrente",
+        message: "El gasto recurrente saldra del registro editable.",
+        confirmText: "Borrar",
+      });
+      if (!confirmed) return;
       state.recurring = state.recurring.filter((entry) => entry.id !== deleteRecurringId);
       await persistAndRender("Recurrente borrado");
     }
@@ -811,7 +891,12 @@ function wireActions() {
   });
 
   $("#resetSeedButton").addEventListener("click", async () => {
-    if (!confirm("Esto reemplaza los datos actuales por una plantilla vacia. ¿Continuar?")) return;
+    const confirmed = await confirmAction({
+      title: "Restaurar plantilla",
+      message: "Esto reemplaza los datos actuales por una plantilla vacia. Haz respaldo antes si quieres conservarlos.",
+      confirmText: "Restaurar",
+    });
+    if (!confirmed) return;
     state = structuredClone(seedState);
     await persistAndRender("Plantilla restaurada");
   });
