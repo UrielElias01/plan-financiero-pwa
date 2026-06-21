@@ -1,7 +1,4 @@
-param(
-  [string]$DatabaseName = "plan-financiero-sync-db",
-  [string]$WorkerDir = "cloudflare-sync"
-)
+param([string]$WorkerDir = "cloudflare-sync")
 
 $ErrorActionPreference = "Stop"
 
@@ -54,25 +51,6 @@ Set-Location $WorkerPath
 Write-Host "Validando Worker..."
 node --check worker.js
 node ..\tools\verify-sync-worker.mjs
-
-$toml = Get-Content -Raw $WranglerToml
-$hasPlaceholder = $toml -match 'database_id = "REPLACE_WITH_D1_DATABASE_ID"'
-
-if ($hasPlaceholder) {
-  Write-Host "Creando D1 y actualizando wrangler.toml..."
-  Invoke-Wrangler d1 create $DatabaseName --binding DB --update-config
-  if ($LASTEXITCODE -ne 0) {
-    throw "No se pudo crear la base D1. Revisa tu login/token de Cloudflare."
-  }
-} else {
-  Write-Host "wrangler.toml ya contiene database_id; no creo otra D1."
-}
-
-Write-Host "Aplicando schema remoto..."
-Invoke-Wrangler d1 execute $DatabaseName --remote --file=./schema.sql --yes
-if ($LASTEXITCODE -ne 0) {
-  throw "No se pudo aplicar schema.sql en D1."
-}
 
 Write-Host "Desplegando Worker..."
 Invoke-Wrangler deploy

@@ -27,6 +27,58 @@ async function readJson(request) {
   }
 }
 
+async function getState(env, syncId) {
+  if (env.STORE) {
+    return env.STORE.get(syncId, "json");
+  }
+
+  if (env.DB) {
+    const row = await env.DB.prepare(
+      "SELECT secret_hash, payload, updated_at FROM sync_state WHERE sync_id = ?",
+    )
+      .bind(syncId)
+      .first();
+
+    if (!row) return null;
+    return {
+      secret_hash: row.secret_hash,
+      payload: JSON.parse(row.payload),
+      updated_at: row.updated_at,
+    };
+  }
+
+  throw new Error("No storage binding configured");
+}
+
+async function putState(env, syncId, secretHash, payload, updatedAt) {
+  if (env.STORE) {
+    await env.STORE.put(
+      syncId,
+      JSON.stringify({
+        secret_hash: secretHash,
+        payload,
+        updated_at: updatedAt,
+      }),
+    );
+    return;
+  }
+
+  if (env.DB) {
+    await env.DB.prepare(
+      `INSERT INTO sync_state (sync_id, secret_hash, payload, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(sync_id) DO UPDATE SET
+         payload = excluded.payload,
+         updated_at = excluded.updated_at`,
+    )
+      .bind(syncId, secretHash, JSON.stringify(payload), updatedAt)
+      .run();
+    return;
+  }
+
+  throw new Error("No storage binding configured");
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") {
@@ -55,21 +107,17 @@ export default {
     }
 
     if (request.method === "GET") {
-      const row = await env.DB.prepare(
-        "SELECT secret_hash, payload, updated_at FROM sync_state WHERE sync_id = ?",
-      )
-        .bind(syncId)
-        .first();
+      const state = await getState(env, syncId);
 
-      if (!row) {
+      if (!state) {
         return json({ error: "No sync state found" }, 404);
       }
-      if (row.secret_hash !== secretHash) {
+      if (state.secret_hash !== secretHash) {
         return json({ error: "Invalid sync secret" }, 403);
       }
       return json({
-        payload: JSON.parse(row.payload),
-        updatedAt: row.updated_at,
+        payload: state.payload,
+        updatedAt: state.updated_at,
       });
     }
 
@@ -79,26 +127,14 @@ export default {
         return json({ error: "Invalid encrypted payload" }, 400);
       }
 
-      const existing = await env.DB.prepare(
-        "SELECT secret_hash FROM sync_state WHERE sync_id = ?",
-      )
-        .bind(syncId)
-        .first();
+      const existing = await getState(env, syncId);
 
       if (existing && existing.secret_hash !== secretHash) {
         return json({ error: "Invalid sync secret" }, 403);
       }
 
       const now = new Date().toISOString();
-      await env.DB.prepare(
-        `INSERT INTO sync_state (sync_id, secret_hash, payload, updated_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(sync_id) DO UPDATE SET
-           payload = excluded.payload,
-           updated_at = excluded.updated_at`,
-      )
-        .bind(syncId, secretHash, JSON.stringify(body.payload), now)
-        .run();
+      await putState(env, syncId, secretHash, body.payload, now);
 
       return json({ ok: true, updatedAt: now });
     }

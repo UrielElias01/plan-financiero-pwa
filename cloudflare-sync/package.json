@@ -6,7 +6,6 @@
   "scripts": {
     "check": "node --check worker.js",
     "test": "node ../tools/verify-sync-worker.mjs",
-    "deploy": "wrangler deploy",
-    "d1:schema": "wrangler d1 execute plan-financiero-sync-db --remote --file=./schema.sql --yes"
+    "deploy": "wrangler deploy"
   }
 }

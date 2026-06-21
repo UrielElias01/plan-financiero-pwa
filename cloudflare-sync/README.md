@@ -1,6 +1,6 @@
 # Backend de sincronizacion cifrada
 
-Backend opcional para la PWA usando Cloudflare Workers + D1.
+Backend opcional para la PWA usando Cloudflare Workers + KV.
 
 La PWA cifra el estado completo en el navegador con AES-GCM antes de subirlo.
 El Worker solo guarda:
@@ -17,7 +17,7 @@ No guarda tus datos financieros en claro.
 - Cuenta gratuita de Cloudflare.
 - Wrangler autenticado con `npx wrangler login`, o un token en
   `CLOUDFLARE_API_TOKEN`.
-- Permisos de Cloudflare para editar Workers y D1.
+- Permisos de Cloudflare para editar Workers y KV.
 
 ## Despliegue local rapido
 
@@ -27,27 +27,27 @@ Desde la raiz del proyecto:
 .\deploy\publish-cloudflare-sync.ps1
 ```
 
-El script valida el Worker, crea la base D1 si `wrangler.toml` todavia tiene el
-placeholder, aplica `schema.sql` y despliega el Worker.
+El script valida el Worker y lo despliega con el namespace KV configurado en
+`wrangler.toml`.
 
-## Crear base D1
+## Namespace KV
+
+El namespace usado como base de datos cifrada se llama:
+
+```text
+plan-financiero-sync-store
+```
+
+Esta enlazado en `wrangler.toml` como:
+
+```text
+binding = "STORE"
+```
+
+## Desplegar Worker manualmente
 
 ```powershell
 cd cloudflare-sync
-npx wrangler d1 create plan-financiero-sync-db --binding DB --update-config
-```
-
-Wrangler actualiza `wrangler.toml` con el `database_id`.
-
-## Crear tabla
-
-```powershell
-npx wrangler d1 execute plan-financiero-sync-db --file=./schema.sql
-```
-
-## Desplegar Worker
-
-```powershell
 npx wrangler deploy
 ```
 
@@ -91,7 +91,4 @@ backend manualmente desde GitHub. Antes agrega estos secretos al repo:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_D1_DATABASE_ID`
 
-El `CLOUDFLARE_D1_DATABASE_ID` se obtiene creando la base D1 una vez con el
-script local o con `npx wrangler d1 create`.

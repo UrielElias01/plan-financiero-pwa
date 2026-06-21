@@ -47,11 +47,27 @@ class FakeD1 {
   }
 }
 
+class FakeKV {
+  constructor() {
+    this.rows = new Map();
+  }
+
+  async get(key, type) {
+    const value = this.rows.get(key);
+    if (!value) return null;
+    return type === "json" ? JSON.parse(value) : value;
+  }
+
+  async put(key, value) {
+    this.rows.set(key, value);
+  }
+}
+
 async function request(path, options = {}) {
   const url = `https://sync.test${path}`;
   const headers = new Headers(options.headers || {});
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  return worker.fetch(new Request(url, { ...options, headers }), { DB: db });
+  return worker.fetch(new Request(url, { ...options, headers }), { STORE: kv });
 }
 
 async function readJson(response) {
@@ -59,6 +75,7 @@ async function readJson(response) {
 }
 
 const db = new FakeD1();
+const kv = new FakeKV();
 const secret = "a".repeat(64);
 const payload = {
   version: 1,

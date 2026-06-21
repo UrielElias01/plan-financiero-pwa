@@ -29,6 +29,12 @@ en modo `workflow` y muestra la URL final.
 
 ## Cloudflare Sync
 
-El backend opcional de sincronizacion cifrada esta en `cloudflare-sync`. Requiere
-una cuenta gratuita de Cloudflare, una base D1 y Wrangler autenticado.
+El backend de sincronizacion cifrada esta en `cloudflare-sync`. Usa Cloudflare
+Workers + KV y esta configurado para:
 
+```text
+https://plan-financiero-sync.uriel-plan-financiero.workers.dev
+```
+
+Requiere una cuenta gratuita de Cloudflare y Wrangler autenticado para futuros
+despliegues.

@@ -85,7 +85,7 @@ const seedState = {
     { month: "Noviembre", total: 0, userPart: 0, debt: 0 },
   ],
   sync: {
-    endpoint: "",
+    endpoint: "https://plan-financiero-sync.uriel-plan-financiero.workers.dev",
     syncId: "",
   },
 };

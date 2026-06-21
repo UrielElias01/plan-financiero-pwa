@@ -72,7 +72,8 @@ La app funciona sin costos y sin servidor local usando:
 Tambien existe backend opcional para sincronizacion cifrada:
 
 - Worker: `cloudflare-sync/worker.js`
-- Base de datos: Cloudflare D1
+- Base de datos: Cloudflare KV
+- Endpoint desplegado: `https://plan-financiero-sync.uriel-plan-financiero.workers.dev`
 - Guia: `cloudflare-sync/README.md`
 
 Eso permite respaldar/sincronizar sin correr servidor en la computadora. Requiere una cuenta gratuita de Cloudflare.
