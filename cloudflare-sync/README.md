@@ -15,17 +15,29 @@ No guarda tus datos financieros en claro.
 ## Requisitos
 
 - Cuenta gratuita de Cloudflare.
-- Wrangler autenticado.
+- Wrangler autenticado con `npx wrangler login`, o un token en
+  `CLOUDFLARE_API_TOKEN`.
+- Permisos de Cloudflare para editar Workers y D1.
+
+## Despliegue local rapido
+
+Desde la raiz del proyecto:
+
+```powershell
+.\deploy\publish-cloudflare-sync.ps1
+```
+
+El script valida el Worker, crea la base D1 si `wrangler.toml` todavia tiene el
+placeholder, aplica `schema.sql` y despliega el Worker.
 
 ## Crear base D1
 
 ```powershell
 cd cloudflare-sync
-npx wrangler d1 create plan-financiero-sync-db
+npx wrangler d1 create plan-financiero-sync-db --binding DB --update-config
 ```
 
-Copia el `database_id` que te devuelva Cloudflare y reemplazalo en
-`wrangler.toml`.
+Wrangler actualiza `wrangler.toml` con el `database_id`.
 
 ## Crear tabla
 
@@ -66,7 +78,20 @@ Para otro dispositivo:
 ## Seguridad
 
 - No subas la contrasena a ningun repositorio.
+- No pegues tokens de Cloudflare en archivos; usa variables de entorno o secretos
+  de GitHub.
 - Si pierdes la contrasena, el backend no puede descifrar el respaldo.
 - Si alguien conoce el endpoint, ID y contrasena, puede leer o sobrescribir ese
   respaldo.
 
+## GitHub Actions
+
+El workflow `.github/workflows/deploy-cloudflare-sync.yml` permite desplegar el
+backend manualmente desde GitHub. Antes agrega estos secretos al repo:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_D1_DATABASE_ID`
+
+El `CLOUDFLARE_D1_DATABASE_ID` se obtiene creando la base D1 una vez con el
+script local o con `npx wrangler d1 create`.

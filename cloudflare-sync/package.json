@@ -2,5 +2,11 @@
   "name": "plan-financiero-sync-worker",
   "version": "0.1.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "check": "node --check worker.js",
+    "test": "node ../tools/verify-sync-worker.mjs",
+    "deploy": "wrangler deploy",
+    "d1:schema": "wrangler d1 execute plan-financiero-sync-db --remote --file=./schema.sql --yes"
+  }
 }
