@@ -35,7 +35,16 @@ Desde la carpeta `pwa-finanzas`:
 npm run check
 ```
 
-Ese comando valida sintaxis y compara los calculos principales contra el respaldo privado `private-data/plan-financiero-v13.private.json`.
+Ese comando valida sintaxis de la PWA publica.
+
+Desde la raiz del proyecto tambien puedes correr:
+
+```powershell
+node tools/verify-sync-worker.mjs
+```
+
+La verificacion privada de calculos existe solo en local y no se publica porque
+contiene importes reales.
 
 ## Como alojarla gratis
 
@@ -70,16 +79,19 @@ Eso permite respaldar/sincronizar sin correr servidor en la computadora. Requier
 
 ## Publicacion con GitHub Pages
 
-1. Crea un repositorio en GitHub.
-2. Sube este proyecto completo, incluyendo `.github/workflows/deploy-pwa.yml`.
-3. En GitHub, ve a `Settings > Pages`.
-4. En `Build and deployment`, elige `GitHub Actions`.
-5. Haz push a `main` o ejecuta manualmente el workflow `Deploy PWA`.
-6. GitHub te dara una URL HTTPS donde podras instalar la PWA desde el celular.
+El repo incluye un script seguro:
 
-## Limite actual
+```powershell
+$env:GITHUB_TOKEN = "token_nuevo_con_permisos_correctos"
+.\deploy\publish-github-pages.ps1
+```
 
-No hay sincronizacion multi-dispositivo todavia. Cada navegador/celular conserva su propia base de datos local. Usa `Exportar JSON` para respaldar o mover tus datos a otro dispositivo.
+La guia completa esta en `deploy/README.md`.
+
+## Sincronizacion multi-dispositivo
+
+La app ya trae cliente de sincronizacion cifrada en `Ajustes`. Para activarlo,
+despliega el backend opcional de `cloudflare-sync`.
 
 ## Datos privados
 

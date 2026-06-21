@@ -2,10 +2,11 @@
 
 Backend opcional para la PWA usando Cloudflare Workers + D1.
 
-La PWA cifra el estado completo en el navegador con AES-GCM antes de subirlo. El Worker solo guarda:
+La PWA cifra el estado completo en el navegador con AES-GCM antes de subirlo.
+El Worker solo guarda:
 
 - `sync_id`
-- hash de la contraseña de sincronizacion
+- hash de la contrasena de sincronizacion
 - payload cifrado
 - fecha de actualizacion
 
@@ -23,7 +24,8 @@ cd cloudflare-sync
 npx wrangler d1 create plan-financiero-sync-db
 ```
 
-Copia el `database_id` que te devuelva Cloudflare y reemplazalo en `wrangler.toml`.
+Copia el `database_id` que te devuelva Cloudflare y reemplazalo en
+`wrangler.toml`.
 
 ## Crear tabla
 
@@ -50,7 +52,7 @@ En la app:
 1. Entra a `Ajustes`.
 2. En `Sincronizacion cifrada`, pega el endpoint del Worker.
 3. Usa un ID de sincronizacion, por ejemplo `uriel-plan`.
-4. Escribe una contraseña local fuerte.
+4. Escribe una contrasena local fuerte.
 5. Presiona `Probar conexion`.
 6. Presiona `Subir cifrado`.
 
@@ -58,11 +60,13 @@ Para otro dispositivo:
 
 1. Instala la PWA.
 2. Entra a `Ajustes`.
-3. Usa el mismo endpoint, ID y contraseña.
+3. Usa el mismo endpoint, ID y contrasena.
 4. Presiona `Bajar cifrado`.
 
 ## Seguridad
 
-- No subas la contraseña a ningun repositorio.
-- Si pierdes la contraseña, el backend no puede descifrar el respaldo.
-- Si alguien conoce el endpoint, ID y contraseña, puede leer o sobrescribir ese respaldo.
+- No subas la contrasena a ningun repositorio.
+- Si pierdes la contrasena, el backend no puede descifrar el respaldo.
+- Si alguien conoce el endpoint, ID y contrasena, puede leer o sobrescribir ese
+  respaldo.
+
