@@ -1,112 +1,67 @@
 # Plan Financiero PWA
 
-PWA offline-first para llevar el plan quincenal que venia en el Excel:
+PWA offline-first para administrar un plan financiero quincenal. El frontend esta migrado a React + Vite + TypeScript + Tailwind, con iconos de lucide-react, graficas de Recharts, IndexedDB local y sincronizacion cifrada opcional con Cloudflare Worker/KV.
+
+## Funcionalidad
 
 - Plan quincenal editable.
-- Gastos y movimientos nuevos.
-- Gastos recurrentes modificables.
-- Calendario de tarjeta de credito.
-- Reporte mensual.
-- Exportacion/importacion JSON para respaldos.
-- Exportacion CSV para reportes.
-- Instalacion como PWA en celular.
+- Movimientos de efectivo y tarjeta.
+- Gastos recurrentes.
+- Calendario de pagos de tarjeta y MSI.
+- Reportes mensuales con graficas.
+- Importacion/exportacion JSON.
+- Exportacion CSV.
+- Persistencia local en IndexedDB.
+- PWA instalable con service worker.
+- Sync cifrado opcional contra `https://plan-financiero-sync.uriel-plan-financiero.workers.dev`.
 
-## Como correr localmente
+## Desarrollo local
 
-Desde esta carpeta:
+Requiere Node `^20.19.0` o `>=22.12.0`. El workflow de GitHub Pages usa Node 24.
 
 ```powershell
-python -m http.server 4173
+npm ci
+npm run dev
 ```
 
 Abre:
 
 ```text
-http://localhost:4173
+http://127.0.0.1:4173
 ```
 
-> La PWA necesita servirse por HTTP/HTTPS para registrar el service worker. Abrir `index.html` directo como archivo no basta para modo offline/instalable.
-
-## Verificacion local
-
-Desde la carpeta `pwa-finanzas`:
+## Build y verificacion
 
 ```powershell
+npm run build
 npm run check
+npm run check:sync
 ```
 
-Ese comando valida sintaxis de la PWA publica.
+El build genera `dist/`, que es lo que publica GitHub Pages.
 
-Desde la raiz del proyecto tambien puedes correr:
+La verificacion privada de calculos usa un respaldo local ignorado por Git:
 
 ```powershell
-node tools/verify-sync-worker.mjs
+npm run check:private
 ```
 
-La verificacion privada de calculos existe solo en local y no se publica porque
-contiene importes reales.
+Ese archivo no debe subirse al repo porque contiene importes reales.
 
-## Como alojarla gratis
+## Deploy
 
-La app no necesita backend para funcionar: guarda la base de datos en IndexedDB dentro del navegador del usuario. Eso permite hosting estatico gratuito.
+El deploy gratis usa GitHub Pages con `.github/workflows/deploy-pwa.yml`:
 
-Opciones gratis:
+1. Instala dependencias con `npm ci`.
+2. Compila `pwa-finanzas/dist`.
+3. Publica el artefacto en Pages.
 
-- GitHub Pages: subir este workspace a un repositorio. Ya incluye `.github/workflows/deploy-pwa.yml` para publicar la carpeta `pwa-finanzas`.
-- Netlify Drop: arrastrar la carpeta `pwa-finanzas` en Netlify Drop.
-- Cloudflare Pages: conectar un repositorio y publicar esta carpeta.
-
-Despues de abrir la URL en el celular:
-
-1. En Android/Chrome: menu `Agregar a pantalla principal` o boton `Instalar app`.
-2. En iPhone/Safari: compartir > `Agregar a pantalla de inicio`.
-
-## Sobre front, back y base de datos
-
-La app funciona sin costos y sin servidor local usando:
-
-- Front: HTML/CSS/JS.
-- Back local: service worker para cache/offline.
-- Base de datos: IndexedDB del navegador.
-
-Tambien existe backend opcional para sincronizacion cifrada:
-
-- Worker: `cloudflare-sync/worker.js`
-- Base de datos: Cloudflare KV
-- Endpoint desplegado: `https://plan-financiero-sync.uriel-plan-financiero.workers.dev`
-- Guia: `cloudflare-sync/README.md`
-
-Eso permite respaldar/sincronizar sin correr servidor en la computadora. Requiere una cuenta gratuita de Cloudflare.
-
-## Publicacion con GitHub Pages
-
-El repo incluye un script seguro:
-
-```powershell
-$env:GITHUB_TOKEN = "token_nuevo_con_permisos_correctos"
-.\deploy\publish-github-pages.ps1
-```
-
-La guia completa esta en `deploy/README.md`.
-
-## Sincronizacion multi-dispositivo
-
-La app ya trae cliente de sincronizacion cifrada en `Ajustes`. Para activarlo,
-despliega el backend opcional de `cloudflare-sync`.
-
-## Datos privados
-
-Por privacidad, la app publica no trae tus numeros personales hardcodeados en `app.js`.
-
-El respaldo real generado desde `plan_financiero_actualizado_junio_2026_v13.xlsx` esta fuera de la carpeta publica:
+URL publica:
 
 ```text
-private-data/plan-financiero-v13.private.json
+https://urielelias01.github.io/plan-financiero-pwa/
 ```
 
-Esa carpeta esta ignorada por Git mediante `.gitignore`. Para cargar tus datos en la PWA:
+## Privacidad
 
-1. Abre la app publicada.
-2. Usa `Importar respaldo privado`.
-3. Selecciona `plan-financiero-v13.private.json` desde tu dispositivo.
-4. La app guarda esos datos en IndexedDB local.
+El repo publico no debe incluir respaldos privados, tokens, importes reales ni exports del usuario. Los datos personales se cargan desde la app con importacion JSON y se guardan solo en IndexedDB o en el sync cifrado, segun lo configures en Ajustes.

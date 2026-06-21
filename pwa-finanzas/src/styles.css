@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color: #102033;
+    background: #edf6ff;
+    font-family:
+      Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    min-height: 100dvh;
+    margin: 0;
+    overflow-x: hidden;
+    background:
+      radial-gradient(circle at 12% 8%, rgb(46 117 182 / 22%), transparent 28rem),
+      radial-gradient(circle at 88% 0%, rgb(15 127 131 / 18%), transparent 24rem),
+      linear-gradient(135deg, #edf6ff 0%, #f8fbff 44%, #f2fbf8 100%);
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgb(31 78 120 / 5%) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(31 78 120 / 5%) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: linear-gradient(to bottom, black, transparent 82%);
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply border border-white/60 bg-white/75 shadow-card backdrop-blur-2xl;
+  }
+
+  .button {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-black transition hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-ocean/20;
+  }
+
+  .button-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-ocean to-teal px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-ocean/20 transition hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-ocean/20;
+  }
+
+  .button-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-teal to-sky-700 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-teal/20 transition hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-ocean/20;
+  }
+
+  .button-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-blue-200 bg-white/80 px-4 py-2.5 text-sm font-black text-navy transition hover:-translate-y-0.5 hover:border-ocean/50 hover:bg-white focus:outline-none focus:ring-4 focus:ring-ocean/20;
+  }
+
+  .button-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-orange-700 to-red-700 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-red-900/20 transition hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-ocean/20;
+  }
+
+  .input {
+    @apply w-full rounded-2xl border border-blue-200 bg-white/85 px-3.5 py-3 text-sm text-ink outline-none transition focus:border-ocean focus:ring-4 focus:ring-ocean/15;
+  }
+
+  .label {
+    @apply grid gap-2 text-sm font-black text-navy;
+  }
+
+  .eyebrow {
+    @apply text-xs font-black uppercase tracking-[0.18em] text-teal;
+  }
+
+  .panel {
+    @apply glass rounded-[1.6rem] p-5 transition hover:-translate-y-0.5 hover:border-ocean/40 hover:shadow-glow;
+  }
+
+  .metric-card {
+    @apply glass relative overflow-hidden rounded-[1.5rem] p-5 transition hover:-translate-y-1 hover:border-ocean/40 hover:shadow-glow;
+  }
+
+  .metric-card::after,
+  .panel::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0 bg-gradient-to-br from-white/60 to-transparent opacity-60;
+  }
+
+  .metric-card > *,
+  .panel > * {
+    @apply relative z-[1];
+  }
+
+  .pill {
+    @apply inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-navy;
+  }
+
+  .money-positive {
+    @apply font-black text-green-700;
+  }
+
+  .money-negative {
+    @apply font-black text-red-700;
+  }
+
+  .table-cell {
+    @apply whitespace-nowrap border-b border-blue-100 px-4 py-3 text-right text-sm;
+  }
+
+  .table-head {
+    @apply whitespace-nowrap bg-ocean px-4 py-3 text-right text-xs font-black uppercase tracking-wide text-white;
+  }
+}
+
+@keyframes floatOrb {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(26px, 38px, 0) scale(1.08);
+  }
+}
+
+.ambient {
+  position: fixed;
+  z-index: -1;
+  width: 340px;
+  height: 340px;
+  border-radius: 999px;
+  filter: blur(34px);
+  opacity: 0.35;
+  animation: floatOrb 14s ease-in-out infinite alternate;
+}
+
+.ambient-one {
+  left: 22%;
+  top: -120px;
+  background: #6fb6ff;
+}
+
+.ambient-two {
+  right: -110px;
+  bottom: 12%;
+  background: #8be0d4;
+  animation-delay: -6s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}

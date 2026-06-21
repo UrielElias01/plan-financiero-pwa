@@ -1,14 +1,36 @@
 {
   "name": "plan-financiero-pwa",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "PWA offline-first para plan financiero quincenal.",
+  "description": "React PWA offline-first para plan financiero quincenal.",
   "scripts": {
-    "start": "python -m http.server 4173",
-    "check": "node --check app.js && node --check sw.js",
-    "check:sync": "node ../tools/verify-sync-worker.mjs",
-    "check:private": "node ../tools/verify-pwa-calculations.mjs",
-    "serve": "python -m http.server 4173"
+    "dev": "vite --configLoader native --host 127.0.0.1 --port 4173",
+    "build": "tsc -b && vite build --configLoader native",
+    "preview": "vite preview --configLoader native --host 127.0.0.1 --port 4173",
+    "check": "tsc -b && vite build --configLoader native",
+    "check:private": "tsx ../tools/verify-pwa-calculations.mjs",
+    "check:sync": "node ../tools/verify-sync-worker.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.2.0",
+    "autoprefixer": "10.4.20",
+    "lucide-react": "0.468.0",
+    "postcss": "^8.5.15",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-is": "^18.3.1",
+    "recharts": "^3.8.1",
+    "tailwindcss": "3.4.17",
+    "tsx": "^4.22.4",
+    "typescript": "5.6.3",
+    "vite": "^7.3.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
   }
 }
