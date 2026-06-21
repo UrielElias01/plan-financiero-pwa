@@ -99,4 +99,4 @@ export type MonthlyReport = {
   cardTotal: number;
 };
 
-export type ViewId = "dashboard" | "periods" | "transactions" | "recurring" | "card" | "reports" | "settings";
+export type ViewId = "dashboard" | "periods" | "transactions" | "recurring" | "card" | "reports" | "settings" | "guide";

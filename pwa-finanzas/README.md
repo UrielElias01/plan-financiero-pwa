@@ -9,11 +9,16 @@ PWA offline-first para administrar un plan financiero quincenal. El frontend est
 - Gastos recurrentes.
 - Calendario de pagos de tarjeta y MSI.
 - Reportes mensuales con graficas.
+- Manual dinamico con ayuda contextual por pantalla.
 - Importacion/exportacion JSON.
 - Exportacion CSV.
 - Persistencia local en IndexedDB.
 - PWA instalable con service worker.
 - Sync cifrado opcional contra `https://plan-financiero-sync.uriel-plan-financiero.workers.dev`.
+
+## Manual dentro de la app
+
+La seccion `Manual` explica para que sirve cada pantalla, que campos puedes modificar y un paso a paso recomendado. Ademas, el boton `Ayuda` del encabezado abre una guia rapida contextual segun la pantalla actual.
 
 ## Desarrollo local
 

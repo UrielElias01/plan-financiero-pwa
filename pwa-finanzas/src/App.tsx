@@ -15,14 +15,18 @@ import {
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  BookOpen,
   CalendarClock,
   ChartSpline,
   Check,
   ChevronRight,
+  CircleHelp,
+  Compass,
   CreditCard,
   Download,
   FileJson,
   LayoutDashboard,
+  Lightbulb,
   ListChecks,
   Menu,
   PanelLeftClose,
@@ -79,6 +83,136 @@ const navItems: NavItem[] = [
   { id: "card", label: "Tarjeta", short: "TC", icon: CreditCard },
   { id: "reports", label: "Reportes", short: "RP", icon: ChartSpline },
   { id: "settings", label: "Ajustes", short: "AJ", icon: Settings },
+  { id: "guide", label: "Manual", short: "MA", icon: BookOpen },
+];
+
+type GuideTopic = {
+  id: ViewId;
+  title: string;
+  summary: string;
+  editable: string[];
+  steps: string[];
+  tip: string;
+  icon: LucideIcon;
+  accent: string;
+};
+
+const guideTopics: GuideTopic[] = [
+  {
+    id: "dashboard",
+    title: "Inicio",
+    summary: "Es tu tablero principal: muestra ahorro actual, pago de tarjeta, alertas y tendencia mensual.",
+    editable: ["Importar tu respaldo privado", "Ir rapido a editar quincenas", "Revisar si hay alertas de flujo negativo"],
+    steps: [
+      "Importa el JSON privado si la app arranca en ceros.",
+      "Revisa las tarjetas superiores para ubicar ahorro, renta apartada y TDC.",
+      "Si una alerta sale en amarillo o rojo, abre Quincenas o Movimientos para ajustar el origen.",
+    ],
+    tip: "Usa Inicio como semaforo: si el cierre proyectado se ve bien, no tienes que tocar todo el plan.",
+    icon: LayoutDashboard,
+    accent: "from-ocean to-teal",
+  },
+  {
+    id: "periods",
+    title: "Quincenas",
+    summary: "Aqui vive el calendario financiero real: cada sueldo alimenta la quincena que toca sobrevivir.",
+    editable: ["Sueldo", "Ingreso extra o de pareja", "Renta/apartado", "Servicios", "Cargos a tarjeta", "Pago de tarjeta"],
+    steps: [
+      "Abre la quincena que quieres ajustar.",
+      "Captura gastos en negativo si son salidas de efectivo, como renta o servicios.",
+      "Captura pago de tarjeta en negativo para que afecte el ahorro proyectado.",
+      "Guarda y vuelve a Inicio para ver el impacto completo.",
+    ],
+    tip: "Esta es la pantalla mas importante para conservar el modelo por quincenas, sin mezclar saldos intermedios.",
+    icon: CalendarClock,
+    accent: "from-blue-700 to-sky-500",
+  },
+  {
+    id: "transactions",
+    title: "Movimientos",
+    summary: "Registra compras, gastos o ingresos nuevos y deja que la app los acomode en quincenas y pagos de TDC.",
+    editable: ["Nombre", "Monto", "Fecha", "Categoria", "Medio de pago", "Quincena", "Dividir con pareja", "MSI"],
+    steps: [
+      "Elige si fue tarjeta o efectivo/debito.",
+      "Selecciona la quincena donde ocurrio el gasto.",
+      "Si fue compartido, marca dividir con pareja para agregar la mitad como ingreso.",
+      "Si fue tarjeta a meses, elige 3 o 6 MSI para repartir pagos en las segundas quincenas.",
+    ],
+    tip: "Para comida compartida pagada con TDC, captura el total y marca dividir con pareja.",
+    icon: WalletCards,
+    accent: "from-teal to-emerald-500",
+  },
+  {
+    id: "recurring",
+    title: "Recurrentes",
+    summary: "Es tu lista editable de servicios y suscripciones para tener claro que sigue activo y cuanto cuesta.",
+    editable: ["Servicio", "Monto", "Dia", "Medio", "Estado activo o cancelado"],
+    steps: [
+      "Agrega cada servicio con su costo mensual.",
+      "Marca si se paga con debito o tarjeta.",
+      "Si ya no lo pagas, cambialo a cancelado o borralo.",
+    ],
+    tip: "Sirve como checklist para no olvidar cargos pequenos que se comen el margen.",
+    icon: ListChecks,
+    accent: "from-indigo-600 to-blue-500",
+  },
+  {
+    id: "card",
+    title: "Tarjeta",
+    summary: "Muestra el calendario de deuda, tu parte y saldos no recurrentes por mes.",
+    editable: ["Se alimenta desde tus compras y quincenas", "Los MSI se reflejan en pagos futuros", "El calendario base viene del respaldo importado"],
+    steps: [
+      "Revisa el mes con barras mas altas.",
+      "Compara total contra parte tuya.",
+      "Si un pago no cuadra, ve a Movimientos o Quincenas para ajustar el origen.",
+    ],
+    tip: "La tarjeta se entiende mejor por fecha de pago: mira sobre todo las segundas quincenas.",
+    icon: CreditCard,
+    accent: "from-slate-800 to-blue-600",
+  },
+  {
+    id: "reports",
+    title: "Reportes",
+    summary: "Resume ingresos, gastos, tarjeta, flujo y ahorro de cierre por mes.",
+    editable: ["Exportar JSON", "Exportar CSV", "Importar JSON", "Comparar meses en graficas"],
+    steps: [
+      "Usa la grafica para ver si el gasto de tarjeta domina algun mes.",
+      "Exporta CSV si quieres revisar numeros en Excel.",
+      "Exporta JSON antes de hacer cambios grandes.",
+    ],
+    tip: "El CSV es para analizar; el JSON es tu respaldo completo para restaurar la app.",
+    icon: ChartSpline,
+    accent: "from-cyan-700 to-teal",
+  },
+  {
+    id: "settings",
+    title: "Ajustes",
+    summary: "Controla los supuestos base, la plantilla y la sincronizacion cifrada.",
+    editable: ["Ahorro actual", "Renta apartada", "Sueldo", "Renta mensual", "Comida/TDC por defecto", "ChatGPT", "Dias de corte y pago", "Sync cifrado"],
+    steps: [
+      "Ajusta los supuestos generales cuando cambie tu vida normal.",
+      "Guarda antes de salir de la pantalla.",
+      "Configura endpoint, ID y contrasena para subir o bajar respaldo cifrado.",
+      "Prueba conexion antes de usar Subir cifrado o Bajar cifrado.",
+    ],
+    tip: "La contrasena de sync no se guarda; si la pierdes no se puede descifrar el respaldo remoto.",
+    icon: Settings,
+    accent: "from-orange-600 to-amber-500",
+  },
+  {
+    id: "guide",
+    title: "Manual",
+    summary: "Centro de ayuda dentro de la app: explica cada pantalla y te lleva al lugar correcto.",
+    editable: ["Abrir una pantalla", "Leer pasos guiados", "Usar ayuda contextual desde el header"],
+    steps: [
+      "Lee la ruta sugerida si estas empezando.",
+      "Abre la tarjeta de una pantalla para ver que modifica.",
+      "Usa el boton Ayuda en cualquier seccion para una guia rapida.",
+    ],
+    tip: "El manual no cambia tus datos; solo te guia por la app.",
+    icon: BookOpen,
+    accent: "from-fuchsia-700 to-ocean",
+  },
 ];
 
 const emptyRecurring: Omit<RecurringItem, "id"> & { id?: string } = {
@@ -186,6 +320,8 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideTopicId, setGuideTopicId] = useState<ViewId | null>(null);
   const [periodDraft, setPeriodDraft] = useState<Period | null>(null);
   const [recurringDraft, setRecurringDraft] = useState(emptyRecurring);
   const [syncDraft, setSyncDraft] = useState(cloneSeed().sync);
@@ -199,6 +335,7 @@ export function App() {
   const periods = useMemo(() => calculatePeriodsFor(state), [state]);
   const monthly = useMemo(() => calculateMonthlyFor(state, periods), [state, periods]);
   const activeNav = navItems.find((item) => item.id === view) || navItems[0];
+  const activeGuide = guideTopics.find((topic) => topic.id === (guideTopicId || view)) || guideTopics[0];
 
   useEffect(() => {
     loadState()
@@ -497,6 +634,7 @@ export function App() {
     <>
       <div className="ambient ambient-one" />
       <div className="ambient ambient-two" />
+      <div className="ambient ambient-three" />
       {mobileMenu ? <div className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileMenu(false)} /> : null}
 
       <div
@@ -569,6 +707,10 @@ export function App() {
               <>
                 <p className="eyebrow text-white/70">PWA</p>
                 <p className="mt-2 text-sm text-white/78">Instalable, offline y con sync cifrado.</p>
+                <button className="button-ghost mt-4 w-full border-white/20 bg-white/10 text-white" type="button" onClick={() => setView("guide")}>
+                  <BookOpen size={16} />
+                  Manual de uso
+                </button>
                 {installPrompt ? (
                   <button className="button-ghost mt-4 w-full border-white/20 bg-white/10 text-white" type="button" onClick={handleInstall}>
                     Instalar app
@@ -580,15 +722,28 @@ export function App() {
         </aside>
 
         <main className="min-w-0 p-4 lg:p-6">
-          <header className="sticky top-0 z-30 mb-5 flex flex-col gap-4 rounded-[1.6rem] border border-white/60 bg-white/70 p-4 shadow-card backdrop-blur-2xl md:flex-row md:items-center md:justify-between">
-            <div>
+          <header className="sticky top-0 z-30 mb-5 flex flex-col gap-4 overflow-hidden rounded-[1.6rem] border border-white/60 bg-white/70 p-4 shadow-card backdrop-blur-2xl md:flex-row md:items-center md:justify-between">
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-ocean via-teal to-mint" />
+            <div className="relative">
               <p className="eyebrow">Actualizable por ti</p>
               <h2 className="text-3xl font-black tracking-tight text-navy md:text-4xl">{activeNav.label}</h2>
+              <p className="mt-1 max-w-2xl text-sm text-slate-500">{activeGuide.summary}</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="relative flex flex-wrap gap-2">
               <button className="button-ghost lg:hidden" type="button" onClick={() => setMobileMenu(true)}>
                 <Menu size={18} />
                 Menu
+              </button>
+              <button
+                className="button-ghost"
+                type="button"
+                onClick={() => {
+                  setGuideTopicId(view);
+                  setGuideOpen(true);
+                }}
+              >
+                <CircleHelp size={18} />
+                Ayuda
               </button>
               <button className="button-primary" type="button" onClick={() => setView("transactions")}>
                 <Plus size={18} />
@@ -659,6 +814,16 @@ export function App() {
                 onPullSync={pullSync}
               />
             ) : null}
+            {view === "guide" ? (
+              <ManualView
+                topics={guideTopics}
+                onNavigate={setView}
+                onOpenTopic={(topicId) => {
+                  setGuideTopicId(topicId);
+                  setGuideOpen(true);
+                }}
+              />
+            ) : null}
           </section>
         </main>
       </div>
@@ -674,6 +839,16 @@ export function App() {
           setQuickActionsOpen(false);
           exportStateJson(state, today);
           showToast("Respaldo exportado");
+        }}
+      />
+
+      <GuideModal
+        open={guideOpen}
+        topic={activeGuide}
+        onClose={() => setGuideOpen(false)}
+        onOpenManual={() => {
+          setGuideOpen(false);
+          setView("guide");
         }}
       />
 
@@ -1337,6 +1512,182 @@ function SettingsView({
   );
 }
 
+function ManualView({
+  topics,
+  onNavigate,
+  onOpenTopic,
+}: {
+  topics: GuideTopic[];
+  onNavigate: (view: ViewId) => void;
+  onOpenTopic: (view: ViewId) => void;
+}) {
+  const flow = [
+    "Importa tu respaldo privado o captura tus ajustes base.",
+    "Revisa Inicio para ver el panorama y alertas.",
+    "Ajusta Quincenas si cambio renta, sueldo, comida o pago TDC.",
+    "Captura Movimientos nuevos para recalcular sin romper el plan.",
+    "Exporta JSON cuando termines cambios importantes.",
+  ];
+
+  return (
+    <div className="grid gap-5">
+      <section className="guide-hero">
+        <div className="relative z-[1] max-w-3xl">
+          <p className="eyebrow text-white/70">Manual dinamico</p>
+          <h3 className="mt-3 text-4xl font-black leading-none tracking-[-0.05em] text-white md:text-6xl">
+            Guia practica para mover tu plan sin perderte.
+          </h3>
+          <p className="mt-4 text-white/78">
+            Cada pantalla tiene una guia rapida, que puedes modificar y un paso a paso. Usa esto como mapa cuando estes actualizando gastos o revisando la tarjeta.
+          </p>
+        </div>
+        <div className="relative z-[1] rounded-[1.5rem] border border-white/20 bg-white/12 p-5 text-white backdrop-blur-2xl">
+          <Compass className="mb-4" />
+          <strong className="block text-2xl font-black">Ruta sugerida</strong>
+          <p className="mt-2 text-sm text-white/70">Empieza por el estado general y baja al detalle solo si algo no cuadra.</p>
+        </div>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
+        <article className="panel">
+          <p className="eyebrow">Paso a paso</p>
+          <h3 className="mb-5 text-2xl font-black text-navy">Flujo recomendado</h3>
+          <div className="grid gap-3">
+            {flow.map((step, index) => (
+              <div key={step} className="flex gap-3 rounded-3xl border border-blue-100 bg-white/75 p-4">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-ocean to-teal text-sm font-black text-white">
+                  {index + 1}
+                </span>
+                <p className="text-sm text-slate-600">{step}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="panel">
+          <p className="eyebrow">Atajo mental</p>
+          <h3 className="mb-5 text-2xl font-black text-navy">Que pantalla uso?</h3>
+          <div className="grid gap-3 md:grid-cols-2">
+            <MiniGuide title="Quiero cambiar mi sueldo/renta" text="Ve a Quincenas o Ajustes, segun si es algo puntual o permanente." />
+            <MiniGuide title="Hice una compra nueva" text="Ve a Movimientos y elige tarjeta, debito o MSI." />
+            <MiniGuide title="Quiero respaldar" text="Ve a Reportes para JSON/CSV o a Ajustes para sync cifrado." />
+            <MiniGuide title="No entiendo un numero" text="Abre Ayuda en esa pantalla y revisa que modifica cada campo." />
+          </div>
+        </article>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {topics.map((topic) => {
+          const Icon = topic.icon;
+          return (
+            <article key={topic.id} className="guide-card">
+              <div className={`mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br ${topic.accent} text-white shadow-lg`}>
+                <Icon size={22} />
+              </div>
+              <h4 className="text-xl font-black text-navy">{topic.title}</h4>
+              <p className="mt-2 min-h-16 text-sm text-slate-500">{topic.summary}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button className="button-ghost px-3 py-2" type="button" onClick={() => onOpenTopic(topic.id)}>
+                  <CircleHelp size={16} />
+                  Guia
+                </button>
+                <button className="button-primary px-3 py-2" type="button" onClick={() => onNavigate(topic.id)}>
+                  Abrir
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </section>
+    </div>
+  );
+}
+
+function MiniGuide({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-3xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 p-4">
+      <strong className="text-navy">{title}</strong>
+      <p className="mt-2 text-sm text-slate-500">{text}</p>
+    </div>
+  );
+}
+
+function GuideModal({
+  open,
+  topic,
+  onClose,
+  onOpenManual,
+}: {
+  open: boolean;
+  topic: GuideTopic;
+  onClose: () => void;
+  onOpenManual: () => void;
+}) {
+  const Icon = topic.icon;
+  return (
+    <Modal open={open} onClose={onClose}>
+      <div className="max-h-[85dvh] overflow-y-auto p-6">
+        <div className={`rounded-[1.5rem] bg-gradient-to-br ${topic.accent} p-5 text-white shadow-glow`}>
+          <div className="flex items-start gap-4">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20">
+              <Icon size={24} />
+            </span>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-white/70">Guia rapida</p>
+              <h3 className="mt-1 text-3xl font-black">{topic.title}</h3>
+              <p className="mt-2 text-sm text-white/78">{topic.summary}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <section className="rounded-3xl border border-blue-100 bg-white/75 p-5">
+            <h4 className="flex items-center gap-2 font-black text-navy">
+              <Lightbulb size={18} />
+              Que puedes modificar
+            </h4>
+            <ul className="mt-4 grid gap-2 text-sm text-slate-600">
+              {topic.editable.map((item) => (
+                <li key={item} className="rounded-2xl bg-blue-50 px-3 py-2">{item}</li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="rounded-3xl border border-blue-100 bg-white/75 p-5">
+            <h4 className="flex items-center gap-2 font-black text-navy">
+              <Compass size={18} />
+              Paso a paso
+            </h4>
+            <ol className="mt-4 grid gap-2 text-sm text-slate-600">
+              {topic.steps.map((step, index) => (
+                <li key={step} className="flex gap-2 rounded-2xl bg-white px-3 py-2">
+                  <span className="font-black text-teal">{index + 1}.</span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </div>
+
+        <div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <strong>Tip:</strong> {topic.tip}
+        </div>
+
+        <div className="mt-6 flex flex-wrap justify-end gap-3">
+          <button className="button-ghost" type="button" onClick={onClose}>
+            Cerrar
+          </button>
+          <button className="button-primary" type="button" onClick={onOpenManual}>
+            <BookOpen size={18} />
+            Ver manual completo
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function QuickActionsModal({
   open,
   onClose,
@@ -1358,6 +1709,7 @@ function QuickActionsModal({
           <ActionTile title="Nuevo movimiento" text="Agregar gasto, ingreso o compra MSI." onClick={() => onView("transactions")} />
           <ActionTile title="Editar quincenas" text="Ajustar renta, comida, sueldo o pagos TDC." onClick={() => onView("periods")} />
           <ActionTile title="Sync y ajustes" text="Configurar respaldo cifrado y supuestos." onClick={() => onView("settings")} />
+          <ActionTile title="Manual de uso" text="Ver pasos guiados y que modifica cada pantalla." onClick={() => onView("guide")} />
           <ActionTile title="Exportar respaldo" text="Descargar JSON actual de la app." onClick={onExport} />
         </div>
       </div>

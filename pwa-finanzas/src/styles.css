@@ -94,6 +94,17 @@
     @apply glass relative overflow-hidden rounded-[1.5rem] p-5 transition hover:-translate-y-1 hover:border-ocean/40 hover:shadow-glow;
   }
 
+  .metric-card::before,
+  .guide-card::before {
+    content: "";
+    @apply pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-gradient-to-br from-ocean/20 to-teal/15 blur-2xl transition;
+  }
+
+  .metric-card:hover::before,
+  .guide-card:hover::before {
+    @apply scale-125 opacity-90;
+  }
+
   .metric-card::after,
   .panel::after {
     content: "";
@@ -123,6 +134,24 @@
 
   .table-head {
     @apply whitespace-nowrap bg-ocean px-4 py-3 text-right text-xs font-black uppercase tracking-wide text-white;
+  }
+
+  .guide-hero {
+    @apply relative grid gap-6 overflow-hidden rounded-[2rem] bg-gradient-to-br from-slate-950 via-navy to-teal p-6 shadow-glow md:p-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end;
+  }
+
+  .guide-hero::before {
+    content: "";
+    @apply pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/15 blur-2xl;
+  }
+
+  .guide-hero::after {
+    content: "";
+    @apply pointer-events-none absolute -bottom-24 right-10 h-72 w-72 rounded-full bg-mint/20 blur-2xl;
+  }
+
+  .guide-card {
+    @apply glass relative overflow-hidden rounded-[1.6rem] p-5 transition hover:-translate-y-1 hover:border-ocean/40 hover:shadow-glow;
   }
 }
 
@@ -158,6 +187,14 @@
   bottom: 12%;
   background: #8be0d4;
   animation-delay: -6s;
+}
+
+.ambient-three {
+  left: -130px;
+  bottom: -120px;
+  background: #fff2cc;
+  opacity: 0.28;
+  animation-delay: -10s;
 }
 
 @media (prefers-reduced-motion: reduce) {
