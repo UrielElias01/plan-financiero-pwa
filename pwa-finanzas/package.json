@@ -1,0 +1,14 @@
+{
+  "name": "plan-financiero-pwa",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PWA offline-first para plan financiero quincenal.",
+  "scripts": {
+    "start": "python -m http.server 4173",
+    "check": "node --check app.js && node --check sw.js",
+    "check:sync": "node ../tools/verify-sync-worker.mjs",
+    "check:private": "node ../tools/verify-pwa-calculations.mjs",
+    "serve": "python -m http.server 4173"
+  }
+}

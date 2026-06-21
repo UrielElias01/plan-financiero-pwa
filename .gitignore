@@ -1,0 +1,7 @@
+private-data/
+*.private.json
+*.log
+work/
+outputs/
+tools/sanitize-public-seed.mjs
+tools/verify-pwa-calculations.mjs

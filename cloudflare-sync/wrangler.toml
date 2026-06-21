@@ -1,0 +1,11 @@
+name = "plan-financiero-sync"
+main = "worker.js"
+compatibility_date = "2026-06-20"
+
+# Create the DB with:
+# wrangler d1 create plan-financiero-sync-db
+# Then replace database_id below.
+[[d1_databases]]
+binding = "DB"
+database_name = "plan-financiero-sync-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"

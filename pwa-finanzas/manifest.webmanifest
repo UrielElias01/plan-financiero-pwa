@@ -1,0 +1,21 @@
+{
+  "name": "Plan Financiero Quincenal",
+  "short_name": "Finanzas",
+  "description": "PWA para llevar quincenas, gastos, tarjeta de credito, recurrentes y reportes.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eaf3fa",
+  "theme_color": "#1f4e78",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "productivity"],
+  "lang": "es-MX"
+}

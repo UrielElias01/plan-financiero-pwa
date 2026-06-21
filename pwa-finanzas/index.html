@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1f4e78" />
+    <meta
+      name="description"
+      content="PWA para administrar un plan financiero quincenal, tarjeta de credito, gastos recurrentes y reportes."
+    />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <title>Plan Financiero</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">PF</div>
+          <div>
+            <h1>Plan Financiero</h1>
+            <p>Quincenas, TDC y ahorros</p>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Secciones">
+          <button class="nav-item active" data-view="dashboard">Inicio</button>
+          <button class="nav-item" data-view="periods">Quincenas</button>
+          <button class="nav-item" data-view="transactions">Movimientos</button>
+          <button class="nav-item" data-view="recurring">Recurrentes</button>
+          <button class="nav-item" data-view="card">Tarjeta</button>
+          <button class="nav-item" data-view="reports">Reportes</button>
+          <button class="nav-item" data-view="settings">Ajustes</button>
+        </nav>
+
+        <div class="install-card">
+          <p class="eyebrow">PWA</p>
+          <p>Instalable y con modo offline una vez abierta.</p>
+          <button id="installButton" class="ghost-button" hidden>Instalar app</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Actualizable por ti</p>
+            <h2 id="viewTitle">Inicio</h2>
+          </div>
+          <div class="top-actions">
+            <button id="quickAddButton" class="primary-button">Agregar gasto</button>
+            <button id="saveSnapshotButton" class="secondary-button">Guardar respaldo</button>
+          </div>
+        </header>
+
+        <section id="dashboard" class="view active-view">
+          <div class="hero-grid">
+            <article class="hero-card">
+              <span>Ahorro actual</span>
+              <strong id="currentSavings">$0.00</strong>
+              <small id="currentSavingsNote">Base actual</small>
+            </article>
+            <article class="hero-card">
+              <span>Tras 1a julio</span>
+              <strong id="afterFirstJuly">$0.00</strong>
+              <small>Sueldo del 30 jun aplicado</small>
+            </article>
+            <article class="hero-card">
+              <span>Pago TDC julio</span>
+              <strong id="julyCardPayment">$0.00</strong>
+              <small>Estimado al 25 jul</small>
+            </article>
+            <article class="hero-card">
+              <span>Cierre proyectado</span>
+              <strong id="projectedClose">$0.00</strong>
+              <small>Noviembre 2026</small>
+            </article>
+          </div>
+
+          <section id="onboardingPanel" class="panel onboarding-panel" hidden>
+            <div>
+              <p class="eyebrow">Primer arranque</p>
+              <h3>La app publica no trae tus montos personales</h3>
+              <p>
+                Para proteger tu informacion financiera, esta version arranca vacia. Importa el respaldo
+                privado generado desde el Excel para cargar tu plan real en este dispositivo.
+              </p>
+            </div>
+            <label class="file-button">
+              Importar respaldo privado
+              <input type="file" accept="application/json" data-import-json />
+            </label>
+          </section>
+
+          <div class="content-grid">
+            <section class="panel wide">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Plan vivo</p>
+                  <h3>Próximas quincenas</h3>
+                </div>
+                <button class="ghost-button" data-view-target="periods">Editar</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Quincena</th>
+                      <th>Ingresos</th>
+                      <th>Gastos</th>
+                      <th>Pago TDC</th>
+                      <th>Flujo</th>
+                      <th>Ahorro</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dashboardPeriods"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Alertas</p>
+                  <h3>Atención</h3>
+                </div>
+              </div>
+              <div id="alerts" class="alert-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="periods" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Editable</p>
+                <h3>Plan quincenal</h3>
+              </div>
+              <button id="addPeriodButton" class="secondary-button">Agregar quincena</button>
+            </div>
+            <div class="table-wrap">
+              <table class="dense-table">
+                <thead>
+                  <tr>
+                    <th>Quincena</th>
+                    <th>Rango</th>
+                    <th>Sueldo</th>
+                    <th>Ingreso pareja</th>
+                    <th>Renta</th>
+                    <th>Servicios</th>
+                    <th>Cargos TDC</th>
+                    <th>ChatGPT</th>
+                    <th>Pago TDC</th>
+                    <th>Ahorro</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="periodRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="transactions" class="view">
+          <div class="two-column">
+            <form id="transactionForm" class="panel form-panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Nuevo</p>
+                  <h3>Movimiento</h3>
+                </div>
+              </div>
+              <label>
+                Nombre
+                <input name="description" required placeholder="Ej. Farmacia, mandado, gasolina" />
+              </label>
+              <div class="form-grid">
+                <label>
+                  Monto
+                  <input name="amount" type="number" step="0.01" min="0" required />
+                </label>
+                <label>
+                  Fecha
+                  <input name="date" type="date" required />
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Categoría
+                  <select name="category">
+                    <option>Comida</option>
+                    <option>Tarjeta</option>
+                    <option>Servicio</option>
+                    <option>Renta</option>
+                    <option>Ingreso</option>
+                    <option>Otro</option>
+                  </select>
+                </label>
+                <label>
+                  Medio
+                  <select name="method">
+                    <option value="credit">Tarjeta de crédito</option>
+                    <option value="cash">Efectivo / débito</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                Quincena
+                <select name="periodId" id="transactionPeriodSelect"></select>
+              </label>
+              <label class="checkbox-line">
+                <input name="shared" type="checkbox" />
+                Dividir con mi pareja
+              </label>
+              <label>
+                Meses sin intereses
+                <select name="installments">
+                  <option value="1">Una exhibición</option>
+                  <option value="3">3 MSI</option>
+                  <option value="6">6 MSI</option>
+                </select>
+              </label>
+              <button class="primary-button" type="submit">Guardar movimiento</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Registro</p>
+                  <h3>Movimientos recientes</h3>
+                </div>
+              </div>
+              <div id="transactionList" class="item-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="recurring" class="view">
+          <div class="two-column">
+            <form id="recurringForm" class="panel form-panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Editar</p>
+                  <h3>Gasto recurrente</h3>
+                </div>
+              </div>
+              <input type="hidden" name="id" />
+              <label>
+                Servicio
+                <input name="name" required placeholder="Ej. Spotify" />
+              </label>
+              <div class="form-grid">
+                <label>
+                  Monto
+                  <input name="amount" type="number" step="0.01" min="0" required />
+                </label>
+                <label>
+                  Día
+                  <input name="day" type="number" min="1" max="31" required />
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Medio
+                  <select name="method">
+                    <option value="debit">Débito</option>
+                    <option value="credit">Tarjeta de crédito</option>
+                  </select>
+                </label>
+                <label>
+                  Estado
+                  <select name="active">
+                    <option value="true">Activo</option>
+                    <option value="false">Cancelado</option>
+                  </select>
+                </label>
+              </div>
+              <button class="primary-button" type="submit">Guardar recurrente</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Servicios</p>
+                  <h3>Recurrentes</h3>
+                </div>
+              </div>
+              <div id="recurringList" class="item-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="card" class="view">
+          <div class="content-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Tarjeta</p>
+                  <h3>Calendario TDC</h3>
+                </div>
+              </div>
+              <div id="cardCalendar" class="item-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">No recurrente</p>
+                  <h3>Deuda estimada</h3>
+                </div>
+              </div>
+              <div id="debtTimeline" class="timeline"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="reports" class="view">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Resumen</p>
+                <h3>Reporte mensual</h3>
+              </div>
+              <div class="button-row">
+                <button id="exportJsonButton" class="secondary-button">Exportar JSON</button>
+                <button id="exportCsvButton" class="secondary-button">Exportar CSV</button>
+                <label class="file-button">
+                  Importar JSON
+                  <input type="file" accept="application/json" data-import-json />
+                </label>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Mes</th>
+                    <th>Ingresos</th>
+                    <th>Gastos efectivo</th>
+                    <th>Pago TDC</th>
+                    <th>Flujo</th>
+                    <th>Ahorro cierre</th>
+                  </tr>
+                </thead>
+                <tbody id="monthlyReportRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="settings" class="view">
+          <form id="settingsForm" class="panel form-panel wide-form">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Supuestos</p>
+                <h3>Ajustes principales</h3>
+              </div>
+              <button id="resetSeedButton" type="button" class="ghost-button danger">Restaurar plantilla</button>
+            </div>
+            <div class="form-grid settings-grid">
+              <label>
+                Ahorro actual
+                <input name="currentSavings" type="number" step="0.01" />
+              </label>
+              <label>
+                Renta apartada fuera del ahorro
+                <input name="rentReserve" type="number" step="0.01" />
+              </label>
+              <label>
+                Sueldo quincenal
+                <input name="salary" type="number" step="0.01" />
+              </label>
+              <label>
+                Renta mensual
+                <input name="monthlyRent" type="number" step="0.01" />
+              </label>
+              <label>
+                Cargos TDC por defecto
+                <input name="defaultFood" type="number" step="0.01" />
+              </label>
+              <label>
+                ChatGPT mensual TDC
+                <input name="chatGpt" type="number" step="0.01" />
+              </label>
+              <label>
+                Día de corte TDC
+                <input name="cutoffDay" type="number" min="1" max="31" />
+              </label>
+              <label>
+                Día límite pago TDC
+                <input name="dueDay" type="number" min="1" max="31" />
+              </label>
+            </div>
+            <button class="primary-button" type="submit">Guardar ajustes</button>
+          </form>
+
+          <section class="panel form-panel wide-form sync-panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Opcional</p>
+                <h3>Sincronización cifrada</h3>
+              </div>
+              <span id="syncStatus" class="pill">Local</span>
+            </div>
+            <p class="helper-text">
+              Usa esto si publicas el backend gratuito. Tus datos se cifran en este dispositivo antes de
+              subirlos; el servidor solo guarda texto cifrado.
+            </p>
+            <div class="form-grid settings-grid">
+              <label>
+                Endpoint del backend
+                <input id="syncEndpoint" placeholder="https://tu-worker.workers.dev" />
+              </label>
+              <label>
+                ID de sincronización
+                <input id="syncId" placeholder="mi-plan-personal" />
+              </label>
+              <label>
+                Contraseña local
+                <input id="syncPassphrase" type="password" autocomplete="new-password" />
+              </label>
+              <label>
+                Confirmar contraseña
+                <input id="syncPassphraseConfirm" type="password" autocomplete="new-password" />
+              </label>
+            </div>
+            <div class="button-row">
+              <button id="saveSyncSettingsButton" class="secondary-button" type="button">Guardar sync</button>
+              <button id="testSyncButton" class="ghost-button" type="button">Probar conexión</button>
+              <button id="pushSyncButton" class="primary-button" type="button">Subir cifrado</button>
+              <button id="pullSyncButton" class="secondary-button" type="button">Bajar cifrado</button>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="periodDialog">
+      <form id="periodForm" method="dialog" class="modal-form">
+        <h3>Editar quincena</h3>
+        <input type="hidden" name="id" />
+        <label>
+          Quincena
+          <input name="label" required />
+        </label>
+        <label>
+          Rango / nota
+          <textarea name="note" rows="3"></textarea>
+        </label>
+        <div class="form-grid">
+          <label>
+            Sueldo
+            <input name="salary" type="number" step="0.01" />
+          </label>
+          <label>
+            Ingreso extra
+            <input name="extraIncome" type="number" step="0.01" />
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Ingreso pareja
+            <input name="partnerIncome" type="number" step="0.01" />
+          </label>
+          <label>
+            Renta / apartado
+            <input name="rent" type="number" step="0.01" />
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            Servicios débito
+            <input name="debitServices" type="number" step="0.01" />
+          </label>
+          <label>
+            Cargos TDC
+            <input name="foodCredit" type="number" step="0.01" />
+          </label>
+        </div>
+        <div class="form-grid">
+          <label>
+            ChatGPT TDC
+            <input name="chatGptCredit" type="number" step="0.01" />
+          </label>
+          <label>
+            Pago tarjeta
+            <input name="cardPayment" type="number" step="0.01" />
+          </label>
+        </div>
+        <menu>
+          <button value="cancel" class="ghost-button">Cancelar</button>
+          <button id="periodSaveButton" value="default" class="primary-button">Guardar</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
