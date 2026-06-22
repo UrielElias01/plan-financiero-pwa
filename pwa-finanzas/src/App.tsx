@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, ReactNode, RefObject } from "react";
+import type { CSSProperties, FormEvent, ReactNode, RefObject } from "react";
 import {
   Area,
   AreaChart,
@@ -99,12 +99,22 @@ type GuideTopic = {
 };
 
 type GuidedTourStep = {
+  moduleId: ViewId;
   view: ViewId;
+  target: string;
+  targetLabel: string;
   title: string;
   intro: string;
   focus: string;
   action: string;
   outcome: string;
+};
+
+type SpotlightRect = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
 };
 
 const guideTopics: GuideTopic[] = [
@@ -227,60 +237,312 @@ const guideTopics: GuideTopic[] = [
 
 const guidedTourSteps: GuidedTourStep[] = [
   {
+    moduleId: "dashboard",
     view: "dashboard",
-    title: "Panorama general",
-    intro: "Empieza aqui para entender si tu plan va sano antes de tocar numeros.",
-    focus: "Mira las tarjetas superiores, las alertas y la grafica de ahorro/flujo.",
-    action: "Si la app esta en ceros, importa tu respaldo privado desde Inicio o Reportes.",
-    outcome: "Sales con una idea clara de que quincena o mes necesita atencion.",
+    target: "header-actions",
+    targetLabel: "Botones superiores",
+    title: "Acciones siempre disponibles",
+    intro: "Estos botones viven en todas las pantallas para que no tengas que volver al menu.",
+    focus: "Ayuda abre una guia contextual, Tour inicia una guia, Agregar gasto abre Movimientos, Acciones muestra atajos y Respaldo descarga tu JSON.",
+    action: "Usa Respaldo antes de cambios grandes y Agregar gasto cuando quieras capturar algo nuevo rapido.",
+    outcome: "Puedes moverte por la app sin perder el punto donde estabas.",
   },
   {
-    view: "settings",
-    title: "Ajustes base",
-    intro: "Aqui se guardan los supuestos permanentes que alimentan el resto del plan.",
-    focus: "Ahorro actual, renta apartada, sueldo, renta mensual, comida/TDC por defecto y sync.",
-    action: "Modifica solo lo que cambio de forma estable y presiona Guardar ajustes.",
-    outcome: "La app recalcula usando tus bases reales sin mezclar saldos intermedios.",
+    moduleId: "dashboard",
+    view: "dashboard",
+    target: "dashboard-hero",
+    targetLabel: "Centro financiero",
+    title: "Portada del plan",
+    intro: "Este bloque confirma que estas en el tablero correcto.",
+    focus: "Resume que el sistema junta quincenas, tarjeta, ahorros, reportes y sync cifrado.",
+    action: "Empieza aqui para ubicarte antes de tocar datos.",
+    outcome: "Tienes contexto antes de ir al detalle.",
   },
   {
+    moduleId: "dashboard",
+    view: "dashboard",
+    target: "dashboard-metrics",
+    targetLabel: "Tarjetas de resumen",
+    title: "Indicadores clave",
+    intro: "Estas tarjetas son la lectura rapida del plan.",
+    focus: "Ahorro actual, renta apartada, pago de tarjeta y cierre proyectado.",
+    action: "Si un monto se ve raro, abre Quincenas o Ajustes para revisar el origen.",
+    outcome: "Detectas problemas sin leer toda la tabla.",
+  },
+  {
+    moduleId: "dashboard",
+    view: "dashboard",
+    target: "dashboard-chart",
+    targetLabel: "Grafica de ahorro y flujo",
+    title: "Grafica de tendencia",
+    intro: "La linea de ahorro muestra hacia donde va tu dinero; la de flujo muestra si una quincena empuja arriba o abajo.",
+    focus: "Ahorro es el saldo proyectado; flujo es el cambio de cada periodo.",
+    action: "Mira los bajones: suelen venir de pagos de tarjeta, renta o gastos variables.",
+    outcome: "Sabes que mes revisar primero.",
+  },
+  {
+    moduleId: "dashboard",
+    view: "dashboard",
+    target: "dashboard-alerts",
+    targetLabel: "Alertas",
+    title: "Alertas automaticas",
+    intro: "Este panel te avisa si algo requiere atencion.",
+    focus: "Flujos negativos, ahorro bajo o cierre proyectado.",
+    action: "Si aparece una alerta roja o amarilla, entra al modulo que menciona el problema.",
+    outcome: "No tienes que buscar a ciegas.",
+  },
+  {
+    moduleId: "dashboard",
+    view: "dashboard",
+    target: "dashboard-preview",
+    targetLabel: "Proximas quincenas",
+    title: "Vista previa quincenal",
+    intro: "Aqui ves las siguientes quincenas sin salir de Inicio.",
+    focus: "Gastos, pago TDC, flujo y ahorro de cada periodo.",
+    action: "Presiona Editar para abrir Quincenas si necesitas corregir un periodo.",
+    outcome: "Pasas del resumen al detalle en un clic.",
+  },
+  {
+    moduleId: "periods",
     view: "periods",
-    title: "Quincenas",
-    intro: "Esta pantalla conserva el modelo correcto: cada pago cubre la quincena siguiente.",
-    focus: "Sueldo, ingresos, renta, servicios, cargos TDC y pago de tarjeta por quincena.",
-    action: "Abre una quincena, ajusta el campo puntual y guarda.",
-    outcome: "Ves como cambia flujo y ahorro sin borrar el historial.",
+    target: "periods-panel",
+    targetLabel: "Plan quincenal",
+    title: "Modulo de Quincenas",
+    intro: "Este modulo es la columna vertebral del sistema.",
+    focus: "Cada sueldo se usa para vivir la quincena correspondiente; aqui no se mezclan saldos intermedios.",
+    action: "Usalo para ajustar montos que pertenecen a una quincena especifica.",
+    outcome: "El historial queda ordenado por periodos.",
   },
   {
+    moduleId: "periods",
+    view: "periods",
+    target: "periods-add",
+    targetLabel: "Agregar quincena",
+    title: "Crear nuevos periodos",
+    intro: "Este boton agrega una quincena editable al final del plan.",
+    focus: "La nueva quincena toma valores base de tus ajustes para que no empieces desde cero.",
+    action: "Usalo cuando quieras extender el plan a mas meses.",
+    outcome: "Puedes seguir proyectando sin rehacer tablas.",
+  },
+  {
+    moduleId: "periods",
+    view: "periods",
+    target: "periods-table",
+    targetLabel: "Tabla quincenal",
+    title: "Leer la tabla",
+    intro: "Cada fila representa una quincena y cada columna te dice como afecta tu ahorro.",
+    focus: "Sueldo e ingresos suman; gastos, renta y pago de tarjeta restan; flujo cambia el ahorro.",
+    action: "Presiona Editar en una fila para corregir montos puntuales.",
+    outcome: "El plan se recalcula sin borrar las demas quincenas.",
+  },
+  {
+    moduleId: "transactions",
     view: "transactions",
-    title: "Movimientos nuevos",
-    intro: "Usa esta pantalla cuando haces una compra, gasto o ingreso nuevo.",
-    focus: "Medio de pago, quincena, dividir con pareja y meses sin intereses.",
-    action: "Captura el total real; si fue compartido, marca Dividir con mi pareja.",
-    outcome: "La compra se reparte automaticamente en pagos futuros si fue TDC/MSI.",
+    target: "transactions-form",
+    targetLabel: "Formulario de movimiento",
+    title: "Captura un movimiento",
+    intro: "Aqui registras compras, gastos o ingresos nuevos.",
+    focus: "Nombre, monto, fecha, categoria, medio de pago y quincena.",
+    action: "Captura el monto real de la compra o gasto.",
+    outcome: "La app ajusta la quincena y, si aplica, los pagos de tarjeta.",
   },
   {
+    moduleId: "transactions",
+    view: "transactions",
+    target: "transactions-method",
+    targetLabel: "Medio de pago",
+    title: "Tarjeta vs debito",
+    intro: "Esta seleccion cambia como se refleja el movimiento.",
+    focus: "Tarjeta agenda el pago futuro; efectivo/debito pega directo al flujo de la quincena.",
+    action: "Elige tarjeta si entrara al corte; elige debito si el dinero ya salio.",
+    outcome: "El calculo cae en el periodo correcto.",
+  },
+  {
+    moduleId: "transactions",
+    view: "transactions",
+    target: "transactions-shared",
+    targetLabel: "Dividir con pareja",
+    title: "Gastos compartidos",
+    intro: "Esta casilla sirve para compras que pagas completas pero te reembolsan una parte.",
+    focus: "La app suma la mitad como ingreso de pareja para reflejar tu carga real.",
+    action: "Marcala cuando captures el total real pagado con tu tarjeta.",
+    outcome: "La tarjeta refleja el total y tu plan refleja solo tu carga real.",
+  },
+  {
+    moduleId: "transactions",
+    view: "transactions",
+    target: "transactions-installments",
+    targetLabel: "Meses sin intereses",
+    title: "Compras a MSI",
+    intro: "Este selector reparte una compra de tarjeta en pagos futuros.",
+    focus: "Una exhibicion cae en el siguiente pago; 3 o 6 MSI se distribuyen por meses.",
+    action: "Elige el plazo real antes de guardar.",
+    outcome: "El pago de tarjeta futuro queda mas realista.",
+  },
+  {
+    moduleId: "transactions",
+    view: "transactions",
+    target: "transactions-list",
+    targetLabel: "Registro de movimientos",
+    title: "Historial editable",
+    intro: "Aqui ves lo que ya capturaste.",
+    focus: "Descripcion, fecha, categoria, quincena y calendario de pago TDC.",
+    action: "Si algo esta mal, borralo y capturalo de nuevo con los datos correctos.",
+    outcome: "Evitas arrastrar errores en meses futuros.",
+  },
+  {
+    moduleId: "recurring",
+    view: "recurring",
+    target: "recurring-form",
+    targetLabel: "Formulario recurrente",
+    title: "Servicios y suscripciones",
+    intro: "Aqui registras gastos que se repiten.",
+    focus: "Nombre del servicio, monto, dia, medio de pago y estado.",
+    action: "Marca cancelado lo que ya no pagas, o borralo si no quieres verlo.",
+    outcome: "Tu checklist mensual queda limpio.",
+  },
+  {
+    moduleId: "recurring",
+    view: "recurring",
+    target: "recurring-list",
+    targetLabel: "Lista de recurrentes",
+    title: "Control de cargos fijos",
+    intro: "Esta lista te ayuda a ubicar gastos pequenos que se repiten.",
+    focus: "Monto, dia de cobro, medio y estado activo/cancelado.",
+    action: "Revisala cuando cambie una suscripcion o servicio.",
+    outcome: "No olvidas cargos repetidos.",
+  },
+  {
+    moduleId: "card",
     view: "card",
-    title: "Tarjeta",
-    intro: "Aqui confirmas como se ve la deuda por mes y que parte te toca pagar.",
-    focus: "Compara total, parte tuya y saldo no recurrente en cada mes.",
-    action: "Si un mes no cuadra, regresa a Movimientos o Quincenas para corregir el origen.",
-    outcome: "Evitas sorpresas en el pago de tarjeta.",
+    target: "card-chart",
+    targetLabel: "Grafica de TDC",
+    title: "Calendario de tarjeta",
+    intro: "Esta grafica compara el total mensual contra tu parte.",
+    focus: "Azul es total; verde es tu parte; los picos indican meses mas pesados.",
+    action: "Identifica el mes mas alto y revisa sus compras o MSI.",
+    outcome: "Anticipas el pago antes de que llegue el corte.",
   },
   {
+    moduleId: "card",
+    view: "card",
+    target: "card-list",
+    targetLabel: "Totales por mes",
+    title: "Detalle mensual",
+    intro: "Estas tarjetas desglosan el calendario por mes.",
+    focus: "Cada tarjeta muestra total y parte tuya.",
+    action: "Compara contra tu app bancaria cuando llegue el corte.",
+    outcome: "Puedes detectar diferencias rapido.",
+  },
+  {
+    moduleId: "card",
+    view: "card",
+    target: "card-debt",
+    targetLabel: "Deuda no recurrente",
+    title: "Saldo no recurrente",
+    intro: "Este panel separa deuda temporal de pagos fijos.",
+    focus: "Si el saldo sube, normalmente viene de compras nuevas o MSI.",
+    action: "Si no cuadra, vuelve a Movimientos.",
+    outcome: "Sabes que parte de la tarjeta es extraordinaria.",
+  },
+  {
+    moduleId: "reports",
     view: "reports",
-    title: "Reportes y respaldos",
-    intro: "Cuando termines cambios importantes, revisa el resumen mensual y guarda respaldo.",
-    focus: "Ingresos, gastos efectivo, pago TDC, flujo y ahorro cierre.",
-    action: "Exporta JSON como respaldo completo o CSV si quieres analizar en Excel.",
-    outcome: "Te quedas con evidencia de la version actual de tu plan.",
+    target: "reports-actions",
+    targetLabel: "Exportar/importar",
+    title: "Botones de reporte",
+    intro: "Estos botones son para respaldar o analizar tus datos.",
+    focus: "JSON guarda todo el estado; CSV exporta el resumen mensual; Importar JSON restaura un respaldo.",
+    action: "Exporta JSON antes de cambios grandes.",
+    outcome: "Puedes volver a una version anterior si algo sale mal.",
   },
   {
+    moduleId: "reports",
+    view: "reports",
+    target: "reports-chart",
+    targetLabel: "Grafica mensual",
+    title: "Comparacion mensual",
+    intro: "Esta grafica te dice que meses cargan mas ingreso o tarjeta.",
+    focus: "Ingresos y tarjeta se muestran lado a lado para detectar meses pesados.",
+    action: "Busca el mes donde tarjeta se acerca demasiado a ingresos.",
+    outcome: "Tienes una alerta visual antes de ver la tabla.",
+  },
+  {
+    moduleId: "reports",
+    view: "reports",
+    target: "reports-table",
+    targetLabel: "Tabla de reporte",
+    title: "Resumen numerico",
+    intro: "La tabla mensual es la version exacta de la grafica.",
+    focus: "Ingresos, gastos efectivo, pago TDC, flujo y ahorro de cierre.",
+    action: "Usala para revisar numeros finos o exportarlos a CSV.",
+    outcome: "Puedes auditar el plan mes por mes.",
+  },
+  {
+    moduleId: "settings",
+    view: "settings",
+    target: "settings-form",
+    targetLabel: "Ajustes principales",
+    title: "Supuestos base",
+    intro: "Aqui viven las constantes del plan.",
+    focus: "Ahorro actual, renta apartada, sueldo, renta mensual, comida/TDC, ChatGPT y fechas de tarjeta.",
+    action: "Cambia aqui solo lo que aplica de forma recurrente.",
+    outcome: "Las quincenas nuevas nacen con valores correctos.",
+  },
+  {
+    moduleId: "settings",
+    view: "settings",
+    target: "settings-save",
+    targetLabel: "Guardar ajustes",
+    title: "Guardar cambios",
+    intro: "Los cambios de supuestos no se aplican hasta guardar.",
+    focus: "Este boton persiste los ajustes en IndexedDB.",
+    action: "Presionalo despues de editar los campos base.",
+    outcome: "La app recalcula y conserva los datos localmente.",
+  },
+  {
+    moduleId: "settings",
+    view: "settings",
+    target: "settings-sync",
+    targetLabel: "Sync cifrado",
+    title: "Sincronizacion segura",
+    intro: "Este bloque sube y baja respaldos cifrados.",
+    focus: "Endpoint, ID de sync, contrasena local y botones de subir/bajar.",
+    action: "Prueba conexion antes de subir o bajar.",
+    outcome: "Tus datos viajan cifrados; el servidor solo guarda texto cifrado.",
+  },
+  {
+    moduleId: "guide",
     view: "guide",
-    title: "Manual y ayuda contextual",
-    intro: "Este manual queda como referencia permanente cuando se te olvide que hace algo.",
-    focus: "Tarjetas de cada pantalla, guia rapida y boton Ayuda en el encabezado.",
-    action: "Abre una tarjeta del manual o usa Ayuda desde cualquier seccion.",
-    outcome: "Puedes volver al paso a paso sin depender de memoria ni del chat.",
+    target: "guide-hero",
+    targetLabel: "Manual dinamico",
+    title: "Manual central",
+    intro: "El manual queda como referencia permanente.",
+    focus: "Explica pantallas, rutas sugeridas y acceso a tours por modulo.",
+    action: "Vuelve aqui cuando quieras entender una parte sin preguntarme otra vez.",
+    outcome: "La app se explica a si misma.",
+  },
+  {
+    moduleId: "guide",
+    view: "guide",
+    target: "guide-tour-cards",
+    targetLabel: "Tours por modulo",
+    title: "Tours especificos",
+    intro: "Estas tarjetas inician recorridos por partes concretas de la app.",
+    focus: "Cada modulo tiene varios pasos con foco visual.",
+    action: "Elige el modulo que quieres aprender.",
+    outcome: "Aprendes solo lo que necesitas en ese momento.",
+  },
+  {
+    moduleId: "guide",
+    view: "guide",
+    target: "guide-module-cards",
+    targetLabel: "Tarjetas del manual",
+    title: "Referencia por pantalla",
+    intro: "Estas tarjetas son la biblioteca de ayuda.",
+    focus: "Guia abre una explicacion rapida; Abrir te lleva a la pantalla.",
+    action: "Usa Guia si quieres leer, Tour si quieres que la app te lleve de la mano.",
+    outcome: "Tienes ayuda pasiva y ayuda guiada.",
   },
 ];
 
@@ -393,6 +655,7 @@ export function App() {
   const [guideTopicId, setGuideTopicId] = useState<ViewId | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
   const [tourStepIndex, setTourStepIndex] = useState(0);
+  const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);
   const [periodDraft, setPeriodDraft] = useState<Period | null>(null);
   const [recurringDraft, setRecurringDraft] = useState(emptyRecurring);
   const [syncDraft, setSyncDraft] = useState(cloneSeed().sync);
@@ -438,6 +701,58 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [view]);
 
+  useEffect(() => {
+    if (!tourOpen) {
+      setSpotlightRect(null);
+      return undefined;
+    }
+
+    let frame = 0;
+    let timer = 0;
+
+    const measure = () => {
+      const target = document.querySelector<HTMLElement>(`[data-tour="${activeTourStep.target}"]`);
+      if (!target) {
+        setSpotlightRect(null);
+        return;
+      }
+      const rect = target.getBoundingClientRect();
+      const padding = 10;
+      const top = Math.max(8, rect.top - padding);
+      const left = Math.max(8, rect.left - padding);
+      const right = Math.min(window.innerWidth - 8, rect.right + padding);
+      const bottom = Math.min(window.innerHeight - 8, rect.bottom + padding);
+      setSpotlightRect({
+        top,
+        left,
+        width: Math.max(32, right - left),
+        height: Math.max(32, bottom - top),
+      });
+    };
+
+    const scrollAndMeasure = () => {
+      const target = document.querySelector<HTMLElement>(`[data-tour="${activeTourStep.target}"]`);
+      target?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+      window.setTimeout(measure, 280);
+    };
+
+    const scheduleMeasure = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(measure);
+    };
+
+    timer = window.setTimeout(scrollAndMeasure, 120);
+    window.addEventListener("resize", scheduleMeasure);
+    window.addEventListener("scroll", scheduleMeasure, true);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", scheduleMeasure);
+      window.removeEventListener("scroll", scheduleMeasure, true);
+    };
+  }, [activeTourStep.target, tourOpen, view]);
+
   function showToast(message: string, tone: Toast["tone"] = "ok") {
     const id = Date.now();
     setToasts((current) => [...current, { id, message, tone }]);
@@ -467,8 +782,14 @@ export function App() {
     localStorage.setItem("pf-sidebar-collapsed", next ? "true" : "false");
   }
 
+  function resolveTourIndex(start: number | ViewId = 0) {
+    if (typeof start === "number") return Math.max(0, Math.min(start, guidedTourSteps.length - 1));
+    const index = guidedTourSteps.findIndex((step) => step.moduleId === start);
+    return index >= 0 ? index : 0;
+  }
+
   function goToTourStep(index: number) {
-    const nextIndex = Math.max(0, Math.min(index, guidedTourSteps.length - 1));
+    const nextIndex = resolveTourIndex(index);
     const step = guidedTourSteps[nextIndex];
     setTourStepIndex(nextIndex);
     setView(step.view);
@@ -476,15 +797,16 @@ export function App() {
     window.setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 60);
   }
 
-  function startGuidedTour(index = 0) {
+  function startGuidedTour(start: number | ViewId = 0) {
     setGuideOpen(false);
     setQuickActionsOpen(false);
     setTourOpen(true);
-    goToTourStep(index);
+    goToTourStep(resolveTourIndex(start));
   }
 
   function closeGuidedTour() {
     setTourOpen(false);
+    setSpotlightRect(null);
     showToast("Tour guiado cerrado");
   }
 
@@ -768,7 +1090,7 @@ export function App() {
             </button>
           </div>
 
-          <nav className="grid gap-2" role="tablist" aria-label="Secciones">
+          <nav className="grid gap-2" role="tablist" aria-label="Secciones" data-tour="sidebar-nav">
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = view === item.id;
@@ -826,7 +1148,7 @@ export function App() {
               <h2 className="text-3xl font-black tracking-tight text-navy md:text-4xl">{activeNav.label}</h2>
               <p className="mt-1 max-w-2xl text-sm text-slate-500">{activeGuide.summary}</p>
             </div>
-            <div className="relative flex flex-wrap gap-2">
+            <div className="relative flex flex-wrap gap-2" data-tour="header-actions">
               <button className="button-ghost lg:hidden" type="button" onClick={() => setMobileMenu(true)}>
                 <Menu size={18} />
                 Menu
@@ -842,7 +1164,7 @@ export function App() {
                 <CircleHelp size={18} />
                 Ayuda
               </button>
-              <button className="button-secondary" type="button" onClick={() => startGuidedTour()}>
+              <button className="button-secondary" type="button" onClick={() => startGuidedTour(view)}>
                 <PlayCircle size={18} />
                 Tour
               </button>
@@ -959,6 +1281,7 @@ export function App() {
       <GuidedTourPanel
         open={tourOpen}
         step={activeTourStep}
+        spotlightRect={spotlightRect}
         stepIndex={tourStepIndex}
         totalSteps={guidedTourSteps.length}
         onClose={closeGuidedTour}
@@ -1038,7 +1361,7 @@ function Dashboard({
 }) {
   return (
     <div className="grid gap-5">
-      <section className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-navy via-ocean to-teal p-6 text-white shadow-glow md:p-8">
+      <section className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-navy via-ocean to-teal p-6 text-white shadow-glow md:p-8" data-tour="dashboard-hero">
         <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full border border-white/20 bg-white/10 blur-sm" />
         <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-center">
           <div>
@@ -1058,7 +1381,7 @@ function Dashboard({
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" data-tour="dashboard-metrics">
         <MetricCard label="Ahorro actual" value={formatMoney(state.settings.currentSavings)} note={`Renta apartada: ${formatMoney(state.settings.rentReserve)}`} icon={WalletCards} />
         <MetricCard label="Tras 1a julio" value={formatMoney(periods.find((period) => period.id === "2026-07-h1")?.savings || 0)} note="Sueldo del 30 jun aplicado" icon={CalendarClock} />
         <MetricCard label="Pago TDC julio" value={formatMoney(Math.abs(periods.find((period) => period.id === "2026-07-h2")?.cardPayment || 0))} note="Estimado al 25 jul" icon={CreditCard} />
@@ -1083,7 +1406,7 @@ function Dashboard({
       ) : null}
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,.75fr)]">
-        <div className="panel">
+        <div className="panel" data-tour="dashboard-chart">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <p className="eyebrow">Tendencia</p>
@@ -1110,7 +1433,7 @@ function Dashboard({
           </div>
         </div>
 
-        <div className="panel">
+        <div className="panel" data-tour="dashboard-alerts">
           <p className="eyebrow">Alertas</p>
           <h3 className="mb-4 text-xl font-black text-navy">Atencion</h3>
           <div className="grid gap-3">
@@ -1131,7 +1454,7 @@ function Dashboard({
         </div>
       </section>
 
-      <section className="panel">
+      <section className="panel" data-tour="dashboard-preview">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="eyebrow">Plan vivo</p>
@@ -1148,9 +1471,9 @@ function Dashboard({
   );
 }
 
-function PeriodsTable({ periods, compact, onEdit }: { periods: CalculatedPeriod[]; compact?: boolean; onEdit?: (period: Period) => void }) {
+function PeriodsTable({ periods, compact, onEdit, tourTarget }: { periods: CalculatedPeriod[]; compact?: boolean; onEdit?: (period: Period) => void; tourTarget?: string }) {
   return (
-    <div className="overflow-x-auto rounded-3xl border border-blue-100 bg-white/80">
+    <div className="overflow-x-auto rounded-3xl border border-blue-100 bg-white/80" data-tour={tourTarget}>
       <table className="w-full border-collapse">
         <thead>
           <tr>
@@ -1193,18 +1516,18 @@ function PeriodsTable({ periods, compact, onEdit }: { periods: CalculatedPeriod[
 
 function PeriodsView({ periods, onEdit, onAdd }: { periods: CalculatedPeriod[]; onEdit: (period: Period) => void; onAdd: () => void }) {
   return (
-    <section className="panel">
+    <section className="panel" data-tour="periods-panel">
       <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="eyebrow">Editable</p>
           <h3 className="text-2xl font-black text-navy">Plan quincenal</h3>
         </div>
-        <button className="button-secondary" type="button" onClick={onAdd}>
+        <button className="button-secondary" type="button" onClick={onAdd} data-tour="periods-add">
           <Plus size={18} />
           Agregar quincena
         </button>
       </div>
-      <PeriodsTable periods={periods} onEdit={onEdit} />
+      <PeriodsTable periods={periods} onEdit={onEdit} tourTarget="periods-table" />
     </section>
   );
 }
@@ -1221,7 +1544,7 @@ function TransactionsView({
   const transactions = [...state.transactions].reverse();
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(320px,.75fr)_minmax(0,1.25fr)]">
-      <form className="panel self-start" onSubmit={onSubmit}>
+      <form className="panel self-start" onSubmit={onSubmit} data-tour="transactions-form">
         <p className="eyebrow">Nuevo</p>
         <h3 className="mb-5 text-2xl font-black text-navy">Movimiento</h3>
         <Field label="Nombre">
@@ -1246,12 +1569,14 @@ function TransactionsView({
               <option>Otro</option>
             </select>
           </Field>
+          <div data-tour="transactions-method">
           <Field label="Medio">
             <select className="input" name="method" defaultValue="credit">
               <option value="credit">Tarjeta de credito</option>
               <option value="cash">Efectivo / debito</option>
             </select>
           </Field>
+          </div>
         </div>
         <Field label="Quincena">
           <select className="input" name="periodId" defaultValue={state.periods[0]?.id}>
@@ -1262,10 +1587,11 @@ function TransactionsView({
             ))}
           </select>
         </Field>
-        <label className="mb-4 flex items-center gap-3 text-sm font-black text-navy">
+        <label className="mb-4 flex items-center gap-3 text-sm font-black text-navy" data-tour="transactions-shared">
           <input className="h-4 w-4" name="shared" type="checkbox" />
           Dividir con mi pareja
         </label>
+        <div data-tour="transactions-installments">
         <Field label="Meses sin intereses">
           <select className="input" name="installments" defaultValue="1">
             <option value="1">Una exhibicion</option>
@@ -1273,13 +1599,14 @@ function TransactionsView({
             <option value="6">6 MSI</option>
           </select>
         </Field>
+        </div>
         <button className="button-primary mt-2 w-full" type="submit">
           <Plus size={18} />
           Guardar movimiento
         </button>
       </form>
 
-      <section className="panel">
+      <section className="panel" data-tour="transactions-list">
         <p className="eyebrow">Registro</p>
         <h3 className="mb-5 text-2xl font-black text-navy">Movimientos recientes</h3>
         {transactions.length ? (
@@ -1338,7 +1665,7 @@ function RecurringView({
 }) {
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(320px,.75fr)_minmax(0,1.25fr)]">
-      <form className="panel self-start" onSubmit={onSubmit}>
+      <form className="panel self-start" onSubmit={onSubmit} data-tour="recurring-form">
         <p className="eyebrow">Editar</p>
         <h3 className="mb-5 text-2xl font-black text-navy">Gasto recurrente</h3>
         <Field label="Servicio">
@@ -1377,7 +1704,7 @@ function RecurringView({
         </div>
       </form>
 
-      <section className="panel">
+      <section className="panel" data-tour="recurring-list">
         <p className="eyebrow">Servicios</p>
         <h3 className="mb-5 text-2xl font-black text-navy">Recurrentes</h3>
         {recurring.length ? (
@@ -1414,7 +1741,7 @@ function CardView({ state }: { state: AppState }) {
   const data = state.cardCalendar.map((entry) => ({ month: entry.month, total: entry.total, tuParte: entry.userPart, deuda: entry.debt }));
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,.8fr)]">
-      <section className="panel">
+      <section className="panel" data-tour="card-chart">
         <p className="eyebrow">Tarjeta</p>
         <h3 className="mb-5 text-2xl font-black text-navy">Calendario TDC</h3>
         <div className="h-80">
@@ -1430,7 +1757,7 @@ function CardView({ state }: { state: AppState }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <div className="mt-5 grid gap-3">
+        <div className="mt-5 grid gap-3" data-tour="card-list">
           {state.cardCalendar.map((entry) => (
             <article key={entry.month} className="flex items-center justify-between rounded-3xl border border-blue-100 bg-white/75 p-4">
               <div>
@@ -1442,7 +1769,7 @@ function CardView({ state }: { state: AppState }) {
           ))}
         </div>
       </section>
-      <section className="panel">
+      <section className="panel" data-tour="card-debt">
         <p className="eyebrow">No recurrente</p>
         <h3 className="mb-5 text-2xl font-black text-navy">Deuda estimada</h3>
         <div className="grid gap-3">
@@ -1480,7 +1807,7 @@ function ReportsView({
           <p className="eyebrow">Resumen</p>
           <h3 className="text-2xl font-black text-navy">Reporte mensual</h3>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" data-tour="reports-actions">
           <button className="button-secondary" type="button" onClick={onExportJson}>
             <FileJson size={18} />
             JSON
@@ -1496,7 +1823,7 @@ function ReportsView({
           </label>
         </div>
       </div>
-      <div className="mb-6 h-80">
+      <div className="mb-6 h-80" data-tour="reports-chart">
         <ResponsiveContainer>
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
@@ -1509,7 +1836,7 @@ function ReportsView({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="overflow-x-auto rounded-3xl border border-blue-100 bg-white/80">
+      <div className="overflow-x-auto rounded-3xl border border-blue-100 bg-white/80" data-tour="reports-table">
         <table className="w-full border-collapse">
           <thead>
             <tr>
@@ -1571,7 +1898,7 @@ function SettingsView({
   const settings = state.settings;
   return (
     <div className="grid gap-5">
-      <form className="panel" onSubmit={onSubmitSettings} key={`settings-${state.updatedAt}`}>
+      <form className="panel" onSubmit={onSubmitSettings} key={`settings-${state.updatedAt}`} data-tour="settings-form">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="eyebrow">Supuestos</p>
@@ -1592,13 +1919,13 @@ function SettingsView({
           <Field label="Dia de corte TDC"><input className="input" name="cutoffDay" type="number" min="1" max="31" defaultValue={settings.cutoffDay} /></Field>
           <Field label="Dia limite pago TDC"><input className="input" name="dueDay" type="number" min="1" max="31" defaultValue={settings.dueDay} /></Field>
         </div>
-        <button className="button-primary mt-5" type="submit">
+        <button className="button-primary mt-5" type="submit" data-tour="settings-save">
           <Check size={18} />
           Guardar ajustes
         </button>
       </form>
 
-      <section className="panel">
+      <section className="panel" data-tour="settings-sync">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="eyebrow">Opcional</p>
@@ -1645,7 +1972,7 @@ function ManualView({
   tourSteps: GuidedTourStep[];
   onNavigate: (view: ViewId) => void;
   onOpenTopic: (view: ViewId) => void;
-  onStartTour: (index?: number) => void;
+  onStartTour: (start?: number | ViewId) => void;
 }) {
   const flow = [
     "Importa tu respaldo privado o captura tus ajustes base.",
@@ -1657,7 +1984,7 @@ function ManualView({
 
   return (
     <div className="grid gap-5">
-      <section className="guide-hero">
+      <section className="guide-hero" data-tour="guide-hero">
         <div className="relative z-[1] max-w-3xl">
           <p className="eyebrow text-white/70">Manual dinamico</p>
           <h3 className="mt-3 text-4xl font-black leading-none tracking-[-0.05em] text-white md:text-6xl">
@@ -1678,32 +2005,36 @@ function ManualView({
         </div>
       </section>
 
-      <section className="panel">
+      <section className="panel" data-tour="guide-tour-cards">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="eyebrow">Guiado por la app</p>
-            <h3 className="text-2xl font-black text-navy">Tour paso a paso</h3>
+            <p className="eyebrow">Guiado por modulo</p>
+            <h3 className="text-2xl font-black text-navy">Tours especificos</h3>
             <p className="mt-2 text-sm text-slate-500">
-              El tour abre una tarjeta flotante y va cambiando de pantalla para mostrarte que revisar en cada parte.
+              Cada tour oscurece lo demas y resalta botones, graficas, tablas o formularios del modulo elegido.
             </p>
           </div>
           <button className="button-primary" type="button" onClick={() => onStartTour(0)}>
             <PlayCircle size={18} />
-            Empezar ahora
+            Tour general
           </button>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {tourSteps.map((step, index) => (
-            <button key={`${step.view}-${step.title}`} className="tour-step-card" type="button" onClick={() => onStartTour(index)}>
-              <span className="grid h-9 w-9 place-items-center rounded-2xl bg-gradient-to-br from-ocean to-teal text-sm font-black text-white">
-                {index + 1}
-              </span>
-              <span>
-                <strong className="block text-navy">{step.title}</strong>
-                <small className="mt-1 block text-slate-500">{step.focus}</small>
-              </span>
-            </button>
-          ))}
+          {topics.map((topic) => {
+            const count = tourSteps.filter((step) => step.moduleId === topic.id).length;
+            const Icon = topic.icon;
+            return (
+              <button key={topic.id} className="tour-step-card" type="button" onClick={() => onStartTour(topic.id)}>
+                <span className="grid h-9 w-9 place-items-center rounded-2xl bg-gradient-to-br from-ocean to-teal text-sm font-black text-white">
+                  <Icon size={17} />
+                </span>
+                <span>
+                  <strong className="block text-navy">{topic.title}</strong>
+                  <small className="mt-1 block text-slate-500">{count} pasos con foco visual</small>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -1735,7 +2066,7 @@ function ManualView({
         </article>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" data-tour="guide-module-cards">
         {topics.map((topic) => {
           const Icon = topic.icon;
           return (
@@ -1749,6 +2080,10 @@ function ManualView({
                 <button className="button-ghost px-3 py-2" type="button" onClick={() => onOpenTopic(topic.id)}>
                   <CircleHelp size={16} />
                   Guia
+                </button>
+                <button className="button-secondary px-3 py-2" type="button" onClick={() => onStartTour(topic.id)}>
+                  <PlayCircle size={16} />
+                  Tour
                 </button>
                 <button className="button-primary px-3 py-2" type="button" onClick={() => onNavigate(topic.id)}>
                   Abrir
@@ -1847,10 +2182,47 @@ function GuideModal({
   );
 }
 
+function SpotlightOverlay({ rect }: { rect: SpotlightRect | null }) {
+  if (!rect || typeof window === "undefined") return <div className="tour-dim inset-0" />;
+
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const top = Math.max(0, Math.min(rect.top, viewportHeight));
+  const left = Math.max(0, Math.min(rect.left, viewportWidth));
+  const width = Math.max(0, Math.min(rect.width, viewportWidth - left));
+  const height = Math.max(0, Math.min(rect.height, viewportHeight - top));
+  const bottomHeight = Math.max(0, viewportHeight - top - height);
+  const rightWidth = Math.max(0, viewportWidth - left - width);
+  const arrowOnLeft = left + width / 2 > viewportWidth / 2;
+  const arrowStyle: CSSProperties = {
+    top: "50%",
+    transform: arrowOnLeft ? "translateY(-50%) rotate(180deg)" : "translateY(-50%)",
+  };
+  if (arrowOnLeft) arrowStyle.left = -64;
+  else arrowStyle.right = -64;
+
+  return (
+    <>
+      <div className="tour-dim" style={{ top: 0, left: 0, width: "100%", height: top }} />
+      <div className="tour-dim" style={{ top, left: 0, width: left, height }} />
+      <div className="tour-dim" style={{ top, right: 0, width: rightWidth, height }} />
+      <div className="tour-dim" style={{ top: top + height, left: 0, width: "100%", height: bottomHeight }} />
+      <div className="tour-spotlight-ring" style={{ top, left, width, height }}>
+        <span className="tour-spotlight-dot" />
+        <svg className="tour-arrow" style={arrowStyle} viewBox="0 0 72 72" aria-hidden="true">
+          <path d="M8 36 C22 12 44 12 58 34" />
+          <path d="M46 24 L60 36 L46 48" />
+        </svg>
+      </div>
+    </>
+  );
+}
+
 function GuidedTourPanel({
   open,
   step,
   stepIndex,
+  spotlightRect,
   totalSteps,
   onClose,
   onPrevious,
@@ -1860,6 +2232,7 @@ function GuidedTourPanel({
   open: boolean;
   step: GuidedTourStep;
   stepIndex: number;
+  spotlightRect: SpotlightRect | null;
   totalSteps: number;
   onClose: () => void;
   onPrevious: () => void;
@@ -1870,11 +2243,18 @@ function GuidedTourPanel({
   const nav = navItems.find((item) => item.id === step.view) || navItems[0];
   const Icon = nav.icon;
   const isLast = stepIndex === totalSteps - 1;
+  const viewportWidth = typeof window === "undefined" ? 1280 : window.innerWidth;
+  const viewportHeight = typeof window === "undefined" ? 720 : window.innerHeight;
+  const prefersTop = spotlightRect ? spotlightRect.top + spotlightRect.height / 2 > viewportHeight / 2 : false;
+  const prefersLeft = spotlightRect ? spotlightRect.left + spotlightRect.width / 2 > viewportWidth / 2 : false;
+  const panelStyle: CSSProperties = prefersTop ? { top: 16 } : { bottom: 16 };
+  if (prefersLeft) panelStyle.left = 16;
+  else panelStyle.right = 16;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[95]">
-      <div className="absolute inset-0 bg-gradient-to-br from-navy/12 via-transparent to-teal/12" />
-      <aside className="pointer-events-auto absolute bottom-4 right-4 w-[min(28rem,calc(100vw-2rem))] overflow-hidden rounded-[2rem] border border-white/70 bg-white/95 shadow-glow backdrop-blur-2xl">
+      <SpotlightOverlay rect={spotlightRect} />
+      <aside className="pointer-events-auto absolute w-[min(28rem,calc(100vw-2rem))] overflow-hidden rounded-[2rem] border border-white/70 bg-white/95 shadow-glow backdrop-blur-2xl" style={panelStyle}>
         <div className="bg-gradient-to-br from-navy via-ocean to-teal p-5 text-white">
           <div className="flex items-start justify-between gap-4">
             <div className="flex gap-3">
@@ -1886,6 +2266,9 @@ function GuidedTourPanel({
                   Paso {stepIndex + 1} de {totalSteps} | {nav.label}
                 </p>
                 <h3 className="mt-1 text-2xl font-black">{step.title}</h3>
+                <span className="mt-2 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-black text-white/85">
+                  En foco: {step.targetLabel}
+                </span>
               </div>
             </div>
             <button className="grid h-9 w-9 place-items-center rounded-full bg-white/15" type="button" onClick={onClose} aria-label="Cerrar tour guiado">
