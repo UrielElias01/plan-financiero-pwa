@@ -9,3 +9,14 @@ pwa-finanzas/node_modules/
 pwa-finanzas/dist/
 pwa-finanzas/.vite/
 pwa-finanzas/*.tsbuildinfo
+.graphify/cache/
+.graphify/fragments/
+.graphify/.graphify_ast.json
+.graphify/.graphify_detect.json
+.graphify/.graphify_labels.json
+.graphify/branch.json
+.graphify/manifest.json
+.graphify/scope.json
+.graphify/worktree.json
+.graphify/needs_update
+.codex/hooks.json

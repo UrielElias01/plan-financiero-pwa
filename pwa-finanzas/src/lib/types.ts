@@ -64,6 +64,15 @@ export type CardCalendarEntry = {
   debt: number;
 };
 
+export type CardDebtSummary = {
+  nextPayment: number;
+  scheduledPayments: number;
+  calendarBalance: number;
+  settingsBalance: number;
+  creditPurchases: number;
+  totalDebt: number;
+};
+
 export type SyncSettings = {
   endpoint: string;
   syncId: string;

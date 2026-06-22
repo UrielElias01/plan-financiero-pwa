@@ -44,9 +44,10 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  applyTransactionToPeriods,
+  applyTransactionToState,
   asNumber,
   buildPaymentScheduleFor,
+  calculateCardDebtFor,
   calculateMonthlyFor,
   calculatePeriodsFor,
   formatMoney,
@@ -58,7 +59,7 @@ import { cloneSeed, today } from "./lib/seed";
 import { loadState, saveState } from "./lib/storage";
 import { decryptStateFromSync, encryptStateForSync, fetchSync, normalizeEndpoint, syncSecret } from "./lib/sync";
 import { registerServiceWorker } from "./lib/pwa";
-import type { AppState, CalculatedPeriod, MonthlyReport, Period, RecurringItem, Transaction, ViewId } from "./lib/types";
+import type { AppState, CalculatedPeriod, CardDebtSummary, MonthlyReport, Period, RecurringItem, Transaction, ViewId } from "./lib/types";
 
 type Toast = { id: number; message: string; tone?: "ok" | "danger" };
 type ConfirmConfig = {
@@ -150,11 +151,12 @@ const guideTopics: GuideTopic[] = [
   {
     id: "transactions",
     title: "Movimientos",
-    summary: "Registra compras, gastos o ingresos nuevos y deja que la app los acomode en quincenas y pagos de TDC.",
+    summary: "Registra compras, gastos o ingresos nuevos y deja que la app los acomode en quincenas, ahorros y pagos de TDC.",
     editable: ["Nombre", "Monto", "Fecha", "Categoria", "Medio de pago", "Quincena", "Dividir con pareja", "MSI"],
     steps: [
       "Elige si fue tarjeta o efectivo/debito.",
       "Selecciona la quincena donde ocurrio el gasto.",
+      "Si fue efectivo/debito en la quincena base, el ahorro actual baja de inmediato porque ese dinero salio del ahorro.",
       "Si fue compartido, marca dividir con pareja para agregar la mitad como ingreso.",
       "Si fue tarjeta a meses, elige 3 o 6 MSI para repartir pagos en las segundas quincenas.",
     ],
@@ -179,9 +181,10 @@ const guideTopics: GuideTopic[] = [
   {
     id: "card",
     title: "Tarjeta",
-    summary: "Muestra el calendario de deuda, tu parte y saldos no recurrentes por mes.",
-    editable: ["Se alimenta desde tus compras y quincenas", "Los MSI se reflejan en pagos futuros", "El calendario base viene del respaldo importado"],
+    summary: "Muestra pago al corte, adeudo total, calendario de deuda, tu parte y saldos no recurrentes por mes.",
+    editable: ["Se alimenta desde tus compras y quincenas", "Los MSI se reflejan en pagos futuros", "El adeudo total suma base importada y compras TDC registradas", "El calendario base viene del respaldo importado"],
     steps: [
+      "Revisa la tarjeta Adeudo total TDC para saber cuanto debes completo, no solo el siguiente corte.",
       "Revisa el mes con barras mas altas.",
       "Compara total contra parte tuya.",
       "Si un pago no cuadra, ve a Movimientos o Quincenas para ajustar el origen.",
@@ -208,7 +211,7 @@ const guideTopics: GuideTopic[] = [
     id: "settings",
     title: "Ajustes",
     summary: "Controla los supuestos base, la plantilla y la sincronizacion cifrada.",
-    editable: ["Ahorro actual", "Renta apartada", "Sueldo", "Renta mensual", "Comida/TDC por defecto", "ChatGPT", "Dias de corte y pago", "Sync cifrado"],
+    editable: ["Ahorro actual", "Renta apartada", "Sueldo", "Renta mensual", "Comida/TDC por defecto", "ChatGPT", "Base de adeudo TDC", "Dias de corte y pago", "Sync cifrado"],
     steps: [
       "Ajusta los supuestos generales cuando cambie tu vida normal.",
       "Guarda antes de salir de la pantalla.",
@@ -668,6 +671,7 @@ export function App() {
 
   const periods = useMemo(() => calculatePeriodsFor(state), [state]);
   const monthly = useMemo(() => calculateMonthlyFor(state, periods), [state, periods]);
+  const cardDebt = useMemo(() => calculateCardDebtFor(state, periods), [state, periods]);
   const activeNav = navItems.find((item) => item.id === view) || navItems[0];
   const activeGuide = guideTopics.find((topic) => topic.id === (guideTopicId || view)) || guideTopics[0];
   const activeTourStep = guidedTourSteps[tourStepIndex] || guidedTourSteps[0];
@@ -901,11 +905,14 @@ export function App() {
       paymentSchedule: buildPaymentScheduleFor(state, transactionBase),
     };
     await commit(
-      {
-        ...state,
-        transactions: [...state.transactions, transaction],
-        periods: applyTransactionToPeriods(state.periods, transaction, 1),
-      },
+      applyTransactionToState(
+        {
+          ...state,
+          transactions: [...state.transactions, transaction],
+        },
+        transaction,
+        1,
+      ),
       "Movimiento agregado",
     );
     form.reset();
@@ -921,11 +928,14 @@ export function App() {
     });
     if (!confirmed) return;
     await commit(
-      {
-        ...state,
-        transactions: state.transactions.filter((entry) => entry.id !== transaction.id),
-        periods: applyTransactionToPeriods(state.periods, transaction, -1),
-      },
+      applyTransactionToState(
+        {
+          ...state,
+          transactions: state.transactions.filter((entry) => entry.id !== transaction.id),
+        },
+        transaction,
+        -1,
+      ),
       "Movimiento borrado",
     );
   }
@@ -1228,6 +1238,7 @@ export function App() {
                 periods={periods}
                 monthly={monthly}
                 state={state}
+                cardDebt={cardDebt}
                 hasRealData={hasRealData}
                 lowSavings={lowSavings}
                 negativeFlows={negativeFlows.length}
@@ -1255,7 +1266,7 @@ export function App() {
                 onDelete={deleteRecurring}
               />
             ) : null}
-            {view === "card" ? <CardView state={state} /> : null}
+            {view === "card" ? <CardView state={state} cardDebt={cardDebt} /> : null}
             {view === "reports" ? (
               <ReportsView monthly={monthly} chartData={chartData} onExportJson={() => exportStateJson(state, today)} onExportCsv={() => exportMonthlyCsv(monthly, today)} onImport={importJson} />
             ) : null}
@@ -1379,6 +1390,7 @@ function Dashboard({
   periods,
   monthly,
   state,
+  cardDebt,
   hasRealData,
   lowSavings,
   negativeFlows,
@@ -1390,6 +1402,7 @@ function Dashboard({
   periods: CalculatedPeriod[];
   monthly: MonthlyReport[];
   state: AppState;
+  cardDebt: CardDebtSummary;
   hasRealData: boolean;
   lowSavings?: CalculatedPeriod;
   negativeFlows: number;
@@ -1420,10 +1433,11 @@ function Dashboard({
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" data-tour="dashboard-metrics">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5" data-tour="dashboard-metrics">
         <MetricCard label="Ahorro actual" value={formatMoney(state.settings.currentSavings)} note={`Renta apartada: ${formatMoney(state.settings.rentReserve)}`} icon={WalletCards} />
         <MetricCard label="Tras 1a julio" value={formatMoney(periods.find((period) => period.id === "2026-07-h1")?.savings || 0)} note="Sueldo del 30 jun aplicado" icon={CalendarClock} />
         <MetricCard label="Pago TDC julio" value={formatMoney(Math.abs(periods.find((period) => period.id === "2026-07-h2")?.cardPayment || 0))} note="Estimado al 25 jul" icon={CreditCard} />
+        <MetricCard label="Adeudo total TDC" value={formatMoney(cardDebt.totalDebt)} note="Base + compras TDC" icon={CreditCard} />
         <MetricCard label="Cierre proyectado" value={formatMoney(periods.at(-1)?.savings || 0)} note="Noviembre 2026" icon={ChartSpline} />
       </section>
 
@@ -1776,52 +1790,61 @@ function RecurringView({
   );
 }
 
-function CardView({ state }: { state: AppState }) {
+function CardView({ state, cardDebt }: { state: AppState; cardDebt: CardDebtSummary }) {
   const data = state.cardCalendar.map((entry) => ({ month: entry.month, total: entry.total, tuParte: entry.userPart, deuda: entry.debt }));
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,.8fr)]">
-      <section className="panel" data-tour="card-chart">
-        <p className="eyebrow">Tarjeta</p>
-        <h3 className="mb-5 text-2xl font-black text-navy">Calendario TDC</h3>
-        <div className="h-64 sm:h-80">
-          <ResponsiveContainer>
-            <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
-              <XAxis dataKey="month" tickLine={false} axisLine={false} />
-              <YAxis tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} tickLine={false} axisLine={false} />
-              <Tooltip formatter={(value) => formatMoney(value)} />
-              <Legend />
-              <Bar dataKey="total" name="Total" fill="#2e75b6" radius={[12, 12, 0, 0]} />
-              <Bar dataKey="tuParte" name="Parte tuya" fill="#0f7f83" radius={[12, 12, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="mt-5 grid gap-3" data-tour="card-list">
-          {state.cardCalendar.map((entry) => (
-            <article key={entry.month} className="flex items-center justify-between gap-3 rounded-3xl border border-blue-100 bg-white/75 p-4">
-              <div className="min-w-0">
+    <div className="grid gap-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Pago al corte" value={formatMoney(cardDebt.nextPayment)} note="Proximo pago programado" icon={CalendarClock} />
+        <MetricCard label="Adeudo total TDC" value={formatMoney(cardDebt.totalDebt)} note="Base + compras de credito" icon={CreditCard} />
+        <MetricCard label="Compras TDC" value={formatMoney(cardDebt.creditPurchases)} note="Movimientos registrados" icon={WalletCards} />
+        <MetricCard label="Base/calendario" value={formatMoney(Math.max(cardDebt.calendarBalance, cardDebt.settingsBalance))} note="Saldo importado o manual" icon={ChartSpline} />
+      </section>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,.8fr)]">
+        <section className="panel" data-tour="card-chart">
+          <p className="eyebrow">Tarjeta</p>
+          <h3 className="mb-5 text-2xl font-black text-navy">Calendario TDC</h3>
+          <div className="h-64 sm:h-80">
+            <ResponsiveContainer>
+              <BarChart data={data}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
+                <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                <YAxis tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} tickLine={false} axisLine={false} />
+                <Tooltip formatter={(value) => formatMoney(value)} />
+                <Legend />
+                <Bar dataKey="total" name="Total" fill="#2e75b6" radius={[12, 12, 0, 0]} />
+                <Bar dataKey="tuParte" name="Parte tuya" fill="#0f7f83" radius={[12, 12, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-5 grid gap-3" data-tour="card-list">
+            {state.cardCalendar.map((entry) => (
+              <article key={entry.month} className="flex items-center justify-between gap-3 rounded-3xl border border-blue-100 bg-white/75 p-4">
+                <div className="min-w-0">
+                  <strong className="text-navy">{entry.month}</strong>
+                  <p className="text-sm text-slate-500">Parte tuya: {formatMoney(entry.userPart)}</p>
+                </div>
+                <span className="pill shrink-0">{formatMoney(entry.total)}</span>
+              </article>
+            ))}
+          </div>
+        </section>
+        <section className="panel" data-tour="card-debt">
+          <p className="eyebrow">No recurrente</p>
+          <h3 className="mb-5 text-2xl font-black text-navy">Deuda estimada</h3>
+          <div className="grid gap-3">
+            {state.cardCalendar.map((entry) => (
+              <article key={entry.month} className="rounded-3xl border border-blue-100 bg-white/75 p-4">
                 <strong className="text-navy">{entry.month}</strong>
-                <p className="text-sm text-slate-500">Parte tuya: {formatMoney(entry.userPart)}</p>
-              </div>
-              <span className="pill shrink-0">{formatMoney(entry.total)}</span>
-            </article>
-          ))}
-        </div>
-      </section>
-      <section className="panel" data-tour="card-debt">
-        <p className="eyebrow">No recurrente</p>
-        <h3 className="mb-5 text-2xl font-black text-navy">Deuda estimada</h3>
-        <div className="grid gap-3">
-          {state.cardCalendar.map((entry) => (
-            <article key={entry.month} className="rounded-3xl border border-blue-100 bg-white/75 p-4">
-              <strong className="text-navy">{entry.month}</strong>
-              <p className="mt-2 text-sm">
-                Saldo no recurrente: <span className={entry.debt <= 0 ? "money-positive" : "money-negative"}>{formatMoney(entry.debt)}</span>
-              </p>
-            </article>
-          ))}
-        </div>
-      </section>
+                <p className="mt-2 text-sm">
+                  Saldo no recurrente: <span className={entry.debt <= 0 ? "money-positive" : "money-negative"}>{formatMoney(entry.debt)}</span>
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -1957,6 +1980,19 @@ function SettingsView({
           <Field label="ChatGPT mensual TDC"><input className="input" name="chatGpt" type="number" step="0.01" defaultValue={settings.chatGpt} /></Field>
           <Field label="Dia de corte TDC"><input className="input" name="cutoffDay" type="number" min="1" max="31" defaultValue={settings.cutoffDay} /></Field>
           <Field label="Dia limite pago TDC"><input className="input" name="dueDay" type="number" min="1" max="31" defaultValue={settings.dueDay} /></Field>
+        </div>
+        <div className="mt-6 rounded-[1.4rem] border border-blue-100 bg-blue-50/50 p-4">
+          <p className="eyebrow">Base de tarjeta</p>
+          <p className="mt-2 text-sm text-slate-500">
+            Estos campos alimentan el adeudo total cuando vienes de un saldo previo o hiciste pagos fuera de Movimientos.
+          </p>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <Field label="Adeudo previo TDC"><input className="input" name="previousCardDebt" type="number" step="0.01" defaultValue={settings.previousCardDebt} /></Field>
+            <Field label="Pago TDC aplicado"><input className="input" name="previousCardPayment" type="number" step="0.01" defaultValue={settings.previousCardPayment} /></Field>
+            <Field label="Pago con puntos"><input className="input" name="pointsPayment" type="number" step="0.01" defaultValue={settings.pointsPayment} /></Field>
+            <Field label="Compras TDC extra"><input className="input" name="newJulyPurchases" type="number" step="0.01" defaultValue={settings.newJulyPurchases} /></Field>
+            <Field label="Saldo no recurrente"><input className="input" name="nonRecurringBalance" type="number" step="0.01" defaultValue={settings.nonRecurringBalance} /></Field>
+          </div>
         </div>
         <button className="button-primary mt-5" type="submit" data-tour="settings-save">
           <Check size={18} />

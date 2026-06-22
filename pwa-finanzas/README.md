@@ -8,6 +8,8 @@ PWA offline-first para administrar un plan financiero quincenal. El frontend est
 - Movimientos de efectivo y tarjeta.
 - Gastos recurrentes.
 - Calendario de pagos de tarjeta y MSI.
+- Adeudo total de tarjeta, separado del pago al corte.
+- Pagos en efectivo/debito descontados del ahorro cuando se registran en la quincena base.
 - Reportes mensuales con graficas.
 - Manual dinamico con ayuda contextual por pantalla.
 - Tours guiados por modulo con foco visual, oscurecimiento, flechas y pasos detallados.
@@ -22,6 +24,17 @@ PWA offline-first para administrar un plan financiero quincenal. El frontend est
 La seccion `Manual` explica para que sirve cada pantalla, que campos puedes modificar y un paso a paso recomendado. Ademas, el boton `Ayuda` del encabezado abre una guia rapida contextual segun la pantalla actual.
 
 El boton `Tour` inicia una guia flotante que cambia de pantalla conforme avanzas, oscurece lo demas y resalta la seccion exacta con circulo y flecha. Desde `Manual` tambien puedes iniciar tours especificos por modulo para revisar botones, graficas, tablas y formularios sin recorrer toda la app.
+
+## Reglas financieras importantes
+
+- La primera quincena parte de `Ahorro actual`; no se recalcula completa para evitar doble conteo.
+- Si agregas un movimiento de `Efectivo / debito` en esa primera quincena, la app baja `Ahorro actual` porque ese dinero sale de ahorro/debito.
+- Si el debito fue compartido, el ajuste directo al ahorro usa solo tu mitad.
+- Una compra con `Tarjeta de credito` no baja el ahorro al capturarla; se agenda como pago futuro de TDC.
+- La pantalla `Tarjeta` muestra `Pago al corte` y `Adeudo total TDC`. El adeudo total combina saldo base importado/manual mas compras de credito registradas en Movimientos.
+- Los campos avanzados de `Ajustes > Base de tarjeta` permiten corregir saldo previo, pagos aplicados, puntos y saldos no recurrentes.
+
+La documentacion completa del modelo esta en `../docs/FINANCIAL_MODEL.md`.
 
 ## Desarrollo local
 

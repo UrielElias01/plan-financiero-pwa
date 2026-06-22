@@ -1,5 +1,13 @@
 import { seedState } from "./seed";
-import type { AppState, CalculatedPeriod, MonthlyReport, PaymentScheduleItem, Period, Transaction } from "./types";
+import type {
+  AppState,
+  CalculatedPeriod,
+  CardDebtSummary,
+  MonthlyReport,
+  PaymentScheduleItem,
+  Period,
+  Transaction,
+} from "./types";
 
 const money = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -86,6 +94,49 @@ export function calculateMonthlyFor(
   });
 }
 
+function positiveAmount(value: unknown): number {
+  return Math.max(0, asNumber(value));
+}
+
+function scheduledAmountFor(transaction: Transaction): number {
+  return sum(transaction.paymentSchedule || [], (payment) => positiveAmount(payment.amount));
+}
+
+export function calculateCardDebtFor(
+  inputState: AppState,
+  periods: CalculatedPeriod[] = calculatePeriodsFor(inputState),
+): CardDebtSummary {
+  const scheduledPayments = sum(periods, (period) => positiveAmount(-period.cardPayment));
+  const scheduledFromTransactions = sum(
+    inputState.transactions.filter((transaction) => transaction.method === "credit"),
+    scheduledAmountFor,
+  );
+  const creditPurchases = sum(
+    inputState.transactions.filter((transaction) => transaction.method === "credit"),
+    (transaction) => Math.max(positiveAmount(transaction.amount), scheduledAmountFor(transaction)),
+  );
+  const calendarBalance = sum(inputState.cardCalendar, (entry) => positiveAmount(entry.total || entry.userPart));
+  const settingsBalance = positiveAmount(
+    inputState.settings.previousCardDebt -
+      inputState.settings.previousCardPayment -
+      inputState.settings.pointsPayment +
+      inputState.settings.newJulyPurchases,
+  );
+  const nonRecurringBalance = positiveAmount(inputState.settings.nonRecurringBalance);
+  const scheduledBase = positiveAmount(scheduledPayments - scheduledFromTransactions);
+  const baseDebt = Math.max(calendarBalance, settingsBalance, nonRecurringBalance, scheduledBase);
+  const nextPayment = periods.find((period) => period.cardPayment < 0)?.cardPayment;
+
+  return {
+    nextPayment: positiveAmount(-(nextPayment || 0)),
+    scheduledPayments,
+    calendarBalance,
+    settingsBalance: Math.max(settingsBalance, nonRecurringBalance),
+    creditPurchases,
+    totalDebt: baseDebt + creditPurchases,
+  };
+}
+
 function isCardPaymentPeriod(period: Period): boolean {
   return period.label.toLowerCase().startsWith("2a ");
 }
@@ -135,4 +186,21 @@ export function applyTransactionToPeriods(periods: Period[], transaction: Transa
 
   period.partnerIncome += direction * sharedIncome;
   return next;
+}
+
+export function applyTransactionToState(inputState: AppState, transaction: Transaction, direction = 1): AppState {
+  const selectedIndex = inputState.periods.findIndex((period) => period.id === transaction.periodId);
+  const settings = { ...inputState.settings };
+
+  if (transaction.method === "cash" && selectedIndex === 0) {
+    const amount = asNumber(transaction.amount);
+    const userShare = transaction.shared ? amount / 2 : amount;
+    settings.currentSavings -= direction * userShare;
+  }
+
+  return {
+    ...inputState,
+    settings,
+    periods: applyTransactionToPeriods(inputState.periods, transaction, direction),
+  };
 }
