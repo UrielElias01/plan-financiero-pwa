@@ -688,6 +688,35 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!mobileMenu) return undefined;
+
+    const scrollY = window.scrollY;
+    const previousBodyStyle = {
+      overflow: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+    };
+
+    document.documentElement.classList.add("mobile-menu-open");
+    document.body.classList.add("mobile-menu-open");
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+
+    return () => {
+      document.documentElement.classList.remove("mobile-menu-open");
+      document.body.classList.remove("mobile-menu-open");
+      document.body.style.overflow = previousBodyStyle.overflow;
+      document.body.style.position = previousBodyStyle.position;
+      document.body.style.top = previousBodyStyle.top;
+      document.body.style.width = previousBodyStyle.width;
+      window.scrollTo({ top: scrollY, behavior: "instant" });
+    };
+  }, [mobileMenu]);
+
+  useEffect(() => {
     const handler = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event);
@@ -1058,7 +1087,7 @@ export function App() {
         }`}
       >
         <aside
-          className={`fixed inset-y-0 left-0 z-50 flex w-[min(21rem,calc(100vw-3rem))] flex-col gap-6 overflow-hidden bg-gradient-to-b from-navy to-slate-900 p-5 text-white shadow-2xl transition-transform duration-200 lg:sticky lg:top-0 lg:h-dvh lg:w-auto lg:translate-x-0 ${
+          className={`mobile-menu-shell fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(21rem,calc(100vw-3rem))] flex-col gap-6 overflow-y-auto bg-gradient-to-b from-navy to-slate-900 p-5 text-white shadow-2xl transition-transform duration-200 lg:sticky lg:top-0 lg:w-auto lg:translate-x-0 lg:overflow-hidden ${
             mobileMenu ? "translate-x-0" : "-translate-x-[105%]"
           } ${sidebarCollapsed ? "lg:items-center lg:p-4" : ""}`}
         >
@@ -1103,7 +1132,10 @@ export function App() {
                   type="button"
                   role="tab"
                   aria-selected={active}
-                  onClick={() => setView(item.id)}
+                  onClick={() => {
+                    setView(item.id);
+                    setMobileMenu(false);
+                  }}
                   title={item.label}
                 >
                   <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/10">
@@ -1122,7 +1154,14 @@ export function App() {
               <>
                 <p className="eyebrow text-white/70">PWA</p>
                 <p className="mt-2 text-sm text-white/78">Instalable, offline y con sync cifrado.</p>
-                <button className="button-ghost mt-4 w-full border-white/20 bg-white/10 text-white" type="button" onClick={() => setView("guide")}>
+                <button
+                  className="button-ghost mt-4 w-full border-white/20 bg-white/10 text-white"
+                  type="button"
+                  onClick={() => {
+                    setView("guide");
+                    setMobileMenu(false);
+                  }}
+                >
                   <BookOpen size={16} />
                   Manual de uso
                 </button>

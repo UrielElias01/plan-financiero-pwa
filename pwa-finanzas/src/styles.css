@@ -234,6 +234,17 @@
   display: none;
 }
 
+html.mobile-menu-open,
+body.mobile-menu-open {
+  overscroll-behavior: none;
+}
+
+.mobile-menu-shell {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
 @media (max-width: 480px) {
   html,
   body,
