@@ -87,7 +87,7 @@
   }
 
   .panel {
-    @apply glass rounded-[1.6rem] p-5 transition hover:-translate-y-0.5 hover:border-ocean/40 hover:shadow-glow;
+    @apply glass relative overflow-hidden rounded-[1.6rem] p-5 transition hover:-translate-y-0.5 hover:border-ocean/40 hover:shadow-glow;
   }
 
   .metric-card {
@@ -211,6 +211,123 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 7;
+}
+
+.table-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll table {
+  min-width: 44rem;
+}
+
+.table-scroll-compact table {
+  min-width: 36rem;
+}
+
+.tour-progress-dots {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tour-progress-dots::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .button-primary,
+  .button-secondary,
+  .button-ghost,
+  .button-danger {
+    min-height: 2.75rem;
+    padding: 0.65rem 0.75rem;
+    white-space: normal;
+    text-align: center;
+    font-size: 0.78rem;
+    line-height: 1.12;
+  }
+
+  .app-header-actions > button,
+  .app-header-actions > label {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .app-header-actions svg {
+    flex-shrink: 0;
+  }
+
+  .panel,
+  .metric-card,
+  .guide-card {
+    border-radius: 1.25rem;
+    padding: 1rem;
+  }
+
+  .guide-hero {
+    gap: 1rem;
+    border-radius: 1.5rem;
+    padding: 1rem;
+  }
+
+  .tour-step-card {
+    gap: 0.7rem;
+    border-radius: 1.25rem;
+    padding: 0.875rem;
+  }
+
+  .table-scroll {
+    margin-right: -0.25rem;
+    margin-left: -0.25rem;
+    border-radius: 1.25rem;
+  }
+
+  .table-cell {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.78rem;
+  }
+
+  .table-head {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.68rem;
+  }
+
+  .tour-panel {
+    right: 0.5rem !important;
+    left: 0.5rem !important;
+    width: auto !important;
+    max-height: calc(100dvh - 1rem);
+    border-radius: 1.25rem;
+  }
+
+  .tour-arrow {
+    display: none;
+  }
+
+  .tour-spotlight-ring {
+    border-width: 3px;
+    border-radius: 1.25rem;
+  }
+
+  .tour-spotlight-ring::before {
+    inset: -6px;
+    border-radius: 1.5rem;
+  }
+
+  .tour-spotlight-dot {
+    top: -12px;
+    right: 0.5rem;
+    width: 24px;
+    height: 24px;
+    border-width: 3px;
+  }
 }
 
 @keyframes tourPulse {

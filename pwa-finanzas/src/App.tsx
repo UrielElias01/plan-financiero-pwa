@@ -1140,15 +1140,15 @@ export function App() {
           </div>
         </aside>
 
-        <main className="min-w-0 p-4 lg:p-6">
-          <header className="sticky top-0 z-30 mb-5 flex flex-col gap-4 overflow-hidden rounded-[1.6rem] border border-white/60 bg-white/70 p-4 shadow-card backdrop-blur-2xl md:flex-row md:items-center md:justify-between">
+        <main className="min-w-0 p-3 sm:p-4 lg:p-6">
+          <header className="app-header md:sticky md:top-0 z-30 mb-4 flex flex-col gap-4 overflow-hidden rounded-[1.4rem] border border-white/60 bg-white/70 p-3 shadow-card backdrop-blur-2xl sm:p-4 md:mb-5 md:flex-row md:items-center md:justify-between md:rounded-[1.6rem]">
             <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-ocean via-teal to-mint" />
             <div className="relative">
               <p className="eyebrow">Actualizable por ti</p>
-              <h2 className="text-3xl font-black tracking-tight text-navy md:text-4xl">{activeNav.label}</h2>
+              <h2 className="text-2xl font-black tracking-tight text-navy sm:text-3xl md:text-4xl">{activeNav.label}</h2>
               <p className="mt-1 max-w-2xl text-sm text-slate-500">{activeGuide.summary}</p>
             </div>
-            <div className="relative flex flex-wrap gap-2" data-tour="header-actions">
+            <div className="app-header-actions relative grid grid-cols-2 gap-2 md:flex md:flex-wrap md:justify-end" data-tour="header-actions">
               <button className="button-ghost lg:hidden" type="button" onClick={() => setMobileMenu(true)}>
                 <Menu size={18} />
                 Menu
@@ -1361,19 +1361,19 @@ function Dashboard({
 }) {
   return (
     <div className="grid gap-5">
-      <section className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-navy via-ocean to-teal p-6 text-white shadow-glow md:p-8" data-tour="dashboard-hero">
+      <section className="relative overflow-hidden rounded-[1.6rem] bg-gradient-to-br from-navy via-ocean to-teal p-4 text-white shadow-glow sm:p-6 md:rounded-[2rem] md:p-8" data-tour="dashboard-hero">
         <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full border border-white/20 bg-white/10 blur-sm" />
         <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-center">
           <div>
             <p className="eyebrow text-white/70">Centro financiero</p>
-            <h3 className="mt-3 max-w-4xl text-4xl font-black leading-[0.98] tracking-[-0.06em] md:text-6xl">
+            <h3 className="mt-3 max-w-4xl text-3xl font-black leading-[0.98] tracking-[-0.06em] sm:text-4xl md:text-6xl">
               Tu plan quincenal, tarjeta y ahorros en un tablero vivo.
             </h3>
             <p className="mt-4 max-w-2xl text-white/76">
               Edita supuestos, agrega movimientos, revisa reportes y sincroniza un respaldo cifrado sin volver al Excel.
             </p>
           </div>
-          <div className="rounded-[1.5rem] border border-white/20 bg-white/12 p-5 backdrop-blur-2xl">
+          <div className="rounded-[1.35rem] border border-white/20 bg-white/12 p-4 backdrop-blur-2xl sm:rounded-[1.5rem] sm:p-5">
             <p className="text-sm text-white/70">Sync cifrado</p>
             <strong className="mt-2 block text-2xl font-black">Cloudflare KV</strong>
             <p className="mt-2 text-sm text-white/70">Backend y base de datos listos para subir o bajar respaldos.</p>
@@ -1405,7 +1405,7 @@ function Dashboard({
         </section>
       ) : null}
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,.75fr)]">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,.75fr)] xl:gap-5">
         <div className="panel" data-tour="dashboard-chart">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
@@ -1413,7 +1413,7 @@ function Dashboard({
               <h3 className="text-xl font-black text-navy">Ahorro y flujo mensual</h3>
             </div>
           </div>
-          <div className="h-72">
+          <div className="h-64 sm:h-72">
             <ResponsiveContainer>
               <AreaChart data={chartData}>
                 <defs>
@@ -1473,7 +1473,7 @@ function Dashboard({
 
 function PeriodsTable({ periods, compact, onEdit, tourTarget }: { periods: CalculatedPeriod[]; compact?: boolean; onEdit?: (period: Period) => void; tourTarget?: string }) {
   return (
-    <div className="overflow-x-auto rounded-3xl border border-blue-100 bg-white/80" data-tour={tourTarget}>
+    <div className={`table-scroll ${compact ? "table-scroll-compact" : ""} overflow-x-auto rounded-3xl border border-blue-100 bg-white/80`} data-tour={tourTarget}>
       <table className="w-full border-collapse">
         <thead>
           <tr>
@@ -1570,12 +1570,12 @@ function TransactionsView({
             </select>
           </Field>
           <div data-tour="transactions-method">
-          <Field label="Medio">
-            <select className="input" name="method" defaultValue="credit">
-              <option value="credit">Tarjeta de credito</option>
-              <option value="cash">Efectivo / debito</option>
-            </select>
-          </Field>
+            <Field label="Medio">
+              <select className="input" name="method" defaultValue="credit">
+                <option value="credit">Tarjeta de credito</option>
+                <option value="cash">Efectivo / debito</option>
+              </select>
+            </Field>
           </div>
         </div>
         <Field label="Quincena">
@@ -1592,13 +1592,13 @@ function TransactionsView({
           Dividir con mi pareja
         </label>
         <div data-tour="transactions-installments">
-        <Field label="Meses sin intereses">
-          <select className="input" name="installments" defaultValue="1">
-            <option value="1">Una exhibicion</option>
-            <option value="3">3 MSI</option>
-            <option value="6">6 MSI</option>
-          </select>
-        </Field>
+          <Field label="Meses sin intereses">
+            <select className="input" name="installments" defaultValue="1">
+              <option value="1">Una exhibicion</option>
+              <option value="3">3 MSI</option>
+              <option value="6">6 MSI</option>
+            </select>
+          </Field>
         </div>
         <button className="button-primary mt-2 w-full" type="submit">
           <Plus size={18} />
@@ -1619,7 +1619,7 @@ function TransactionsView({
                 : "";
               return (
                 <article key={transaction.id} className="flex flex-col gap-3 rounded-3xl border border-blue-100 bg-white/75 p-4 md:flex-row md:items-center md:justify-between">
-                  <div>
+                  <div className="min-w-0">
                     <strong className="text-navy">{transaction.description}</strong>
                     <p className="text-sm text-slate-500">
                       {transaction.date} | {transaction.category} | {getPeriodLabel(state.periods, transaction.periodId)}
@@ -1630,7 +1630,7 @@ function TransactionsView({
                     </p>
                     {schedule ? <p className="text-xs text-slate-500">Pago TDC: {schedule}</p> : null}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between gap-2 md:justify-end">
                     <span className="pill">{formatMoney(transaction.amount)}</span>
                     <button className="button-ghost px-3 py-2 text-red-700" type="button" onClick={() => onDelete(transaction)}>
                       <Trash2 size={16} />
@@ -1711,13 +1711,13 @@ function RecurringView({
           <div className="grid gap-3">
             {recurring.map((item) => (
               <article key={item.id} className="flex flex-col gap-3 rounded-3xl border border-blue-100 bg-white/75 p-4 md:flex-row md:items-center md:justify-between">
-                <div>
+                <div className="min-w-0">
                   <strong className="text-navy">{item.name}</strong>
                   <p className="text-sm text-slate-500">
                     Dia {item.day} | {item.method === "credit" ? "Tarjeta" : "Debito"} | {item.active ? "Activo" : "Cancelado"}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 md:justify-end">
                   <span className="pill">{formatMoney(item.amount)}</span>
                   <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(item)}>
                     Editar
@@ -1744,7 +1744,7 @@ function CardView({ state }: { state: AppState }) {
       <section className="panel" data-tour="card-chart">
         <p className="eyebrow">Tarjeta</p>
         <h3 className="mb-5 text-2xl font-black text-navy">Calendario TDC</h3>
-        <div className="h-80">
+        <div className="h-64 sm:h-80">
           <ResponsiveContainer>
             <BarChart data={data}>
               <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
@@ -1759,12 +1759,12 @@ function CardView({ state }: { state: AppState }) {
         </div>
         <div className="mt-5 grid gap-3" data-tour="card-list">
           {state.cardCalendar.map((entry) => (
-            <article key={entry.month} className="flex items-center justify-between rounded-3xl border border-blue-100 bg-white/75 p-4">
-              <div>
+            <article key={entry.month} className="flex items-center justify-between gap-3 rounded-3xl border border-blue-100 bg-white/75 p-4">
+              <div className="min-w-0">
                 <strong className="text-navy">{entry.month}</strong>
                 <p className="text-sm text-slate-500">Parte tuya: {formatMoney(entry.userPart)}</p>
               </div>
-              <span className="pill">{formatMoney(entry.total)}</span>
+              <span className="pill shrink-0">{formatMoney(entry.total)}</span>
             </article>
           ))}
         </div>
@@ -1823,7 +1823,7 @@ function ReportsView({
           </label>
         </div>
       </div>
-      <div className="mb-6 h-80" data-tour="reports-chart">
+      <div className="mb-6 h-64 sm:h-80" data-tour="reports-chart">
         <ResponsiveContainer>
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
@@ -1836,7 +1836,7 @@ function ReportsView({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="overflow-x-auto rounded-3xl border border-blue-100 bg-white/80" data-tour="reports-table">
+      <div className="table-scroll overflow-x-auto rounded-3xl border border-blue-100 bg-white/80" data-tour="reports-table">
         <table className="w-full border-collapse">
           <thead>
             <tr>
@@ -1987,14 +1987,14 @@ function ManualView({
       <section className="guide-hero" data-tour="guide-hero">
         <div className="relative z-[1] max-w-3xl">
           <p className="eyebrow text-white/70">Manual dinamico</p>
-          <h3 className="mt-3 text-4xl font-black leading-none tracking-[-0.05em] text-white md:text-6xl">
+          <h3 className="mt-3 text-3xl font-black leading-none tracking-[-0.05em] text-white sm:text-4xl md:text-6xl">
             Guia practica para mover tu plan sin perderte.
           </h3>
           <p className="mt-4 text-white/78">
             Cada pantalla tiene una guia rapida, que puedes modificar y un paso a paso. Usa esto como mapa cuando estes actualizando gastos o revisando la tarjeta.
           </p>
         </div>
-        <div className="relative z-[1] rounded-[1.5rem] border border-white/20 bg-white/12 p-5 text-white backdrop-blur-2xl">
+        <div className="relative z-[1] rounded-[1.35rem] border border-white/20 bg-white/12 p-4 text-white backdrop-blur-2xl sm:rounded-[1.5rem] sm:p-5">
           <Compass className="mb-4" />
           <strong className="block text-2xl font-black">Ruta sugerida</strong>
           <p className="mt-2 text-sm text-white/70">Empieza por el estado general y baja al detalle solo si algo no cuadra.</p>
@@ -2121,8 +2121,8 @@ function GuideModal({
   const Icon = topic.icon;
   return (
     <Modal open={open} onClose={onClose}>
-      <div className="max-h-[85dvh] overflow-y-auto p-6">
-        <div className={`rounded-[1.5rem] bg-gradient-to-br ${topic.accent} p-5 text-white shadow-glow`}>
+      <div className="max-h-[85dvh] overflow-y-auto p-4 sm:p-6">
+        <div className={`rounded-[1.35rem] bg-gradient-to-br ${topic.accent} p-4 text-white shadow-glow sm:rounded-[1.5rem] sm:p-5`}>
           <div className="flex items-start gap-4">
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20">
               <Icon size={24} />
@@ -2136,7 +2136,7 @@ function GuideModal({
         </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <section className="rounded-3xl border border-blue-100 bg-white/75 p-5">
+          <section className="rounded-3xl border border-blue-100 bg-white/75 p-4 sm:p-5">
             <h4 className="flex items-center gap-2 font-black text-navy">
               <Lightbulb size={18} />
               Que puedes modificar
@@ -2148,7 +2148,7 @@ function GuideModal({
             </ul>
           </section>
 
-          <section className="rounded-3xl border border-blue-100 bg-white/75 p-5">
+          <section className="rounded-3xl border border-blue-100 bg-white/75 p-4 sm:p-5">
             <h4 className="flex items-center gap-2 font-black text-navy">
               <Compass size={18} />
               Paso a paso
@@ -2254,8 +2254,8 @@ function GuidedTourPanel({
   return (
     <div className="pointer-events-none fixed inset-0 z-[95]">
       <SpotlightOverlay rect={spotlightRect} />
-      <aside className="pointer-events-auto absolute w-[min(28rem,calc(100vw-2rem))] overflow-hidden rounded-[2rem] border border-white/70 bg-white/95 shadow-glow backdrop-blur-2xl" style={panelStyle}>
-        <div className="bg-gradient-to-br from-navy via-ocean to-teal p-5 text-white">
+      <aside className="tour-panel pointer-events-auto absolute w-[min(28rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto overflow-x-hidden rounded-[1.5rem] border border-white/70 bg-white/95 shadow-glow backdrop-blur-2xl sm:rounded-[2rem]" style={panelStyle}>
+        <div className="bg-gradient-to-br from-navy via-ocean to-teal p-4 text-white sm:p-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex gap-3">
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20">
@@ -2265,7 +2265,7 @@ function GuidedTourPanel({
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-white/70">
                   Paso {stepIndex + 1} de {totalSteps} | {nav.label}
                 </p>
-                <h3 className="mt-1 text-2xl font-black">{step.title}</h3>
+                <h3 className="mt-1 text-xl font-black sm:text-2xl">{step.title}</h3>
                 <span className="mt-2 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-black text-white/85">
                   En foco: {step.targetLabel}
                 </span>
@@ -2278,22 +2278,22 @@ function GuidedTourPanel({
           <p className="mt-4 text-sm text-white/78">{step.intro}</p>
         </div>
 
-        <div className="grid gap-4 p-5">
-          <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
+        <div className="grid gap-3 p-4 sm:gap-4 sm:p-5">
+          <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-3 sm:rounded-3xl sm:p-4">
             <p className="eyebrow">Mira esto</p>
             <p className="mt-2 text-sm text-slate-600">{step.focus}</p>
           </div>
-          <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4">
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 sm:rounded-3xl sm:p-4">
             <p className="eyebrow text-emerald-700">Haz esto</p>
             <p className="mt-2 text-sm text-emerald-950">{step.action}</p>
           </div>
-          <div className="rounded-3xl border border-amber-100 bg-amber-50 p-4">
+          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 sm:rounded-3xl sm:p-4">
             <p className="eyebrow text-amber-700">Resultado esperado</p>
             <p className="mt-2 text-sm text-amber-950">{step.outcome}</p>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex gap-1">
+            <div className="tour-progress-dots flex max-w-full gap-1 overflow-x-auto pb-1">
               {Array.from({ length: totalSteps }, (_, index) => (
                 <button
                   key={index}
