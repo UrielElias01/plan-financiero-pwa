@@ -19,6 +19,7 @@ Este documento describe las reglas que usa la PWA para convertir quincenas, movi
 - `pointsPayment`: pago con puntos aplicado contra la tarjeta.
 - `newJulyPurchases`: compras extra de tarjeta fuera del calendario importado.
 - `nonRecurringBalance`: saldo manual no recurrente.
+- `usedCreditBalance`: saldo utilizado real que muestra el banco. Es la fuente principal para la tarjeta.
 
 ### Quincenas
 
@@ -79,26 +80,28 @@ Reglas:
 La pantalla `Tarjeta` muestra dos ideas distintas:
 
 - `Pago al corte`: el siguiente pago programado de TDC.
-- `Saldo utilizado TDC`: el saldo ocupado de la tarjeta, equivalente al siguiente corte mas lo que queda a meses.
+- `Saldo utilizado TDC`: el saldo ocupado de la tarjeta que muestra el banco, equivalente al siguiente corte mas lo que queda a meses.
 
 El saldo utilizado se calcula en `calculateCardDebtFor`.
 
 Componentes:
 
-- `calendarBalance`: suma de la base importada desde `cardCalendar` usando `total` o, si no existe, `userPart`.
-- `settingsBalance`: `previousCardDebt - previousCardPayment - pointsPayment + newJulyPurchases`.
+- `calendarBalance`: suma de saldos no recurrentes (`debt`) desde `cardCalendar`; no suma los totales mensuales completos.
+- `usedCreditBalance`: saldo utilizado real capturado en Ajustes.
+- `settingsBalance`: respaldo legacy calculado como `previousCardDebt - previousCardPayment - pointsPayment + newJulyPurchases`.
 - `nonRecurringBalance`: saldo manual no recurrente.
 - `scheduledPayments`: suma de pagos TDC pendientes en quincenas.
+- `scheduledFromTransactions`: suma de pagos pendientes generados por movimientos de tarjeta.
 - `creditPurchases`: compras de credito registradas en Movimientos; se muestra como referencia, pero no se suma encima si ya esta calendarizada.
 
 Formula:
 
 ```text
-totalDebt = max(scheduledPayments, calendarBalance, settingsBalance, nonRecurringBalance)
+totalDebt = usedCreditBalance || settingsBalance || max(scheduledFromTransactions, nonRecurringBalance, calendarBalance, nextPayment)
 installmentBalance = max(totalDebt - nextPayment, 0)
 ```
 
-Esto evita inflar el saldo sumando dos veces compras que ya aparecen dentro del siguiente corte o de los MSI.
+Esto evita inflar el saldo sumando meses futuros completos del calendario. El calendario sirve como referencia; el numero confiable es el saldo utilizado real del banco.
 
 ## Reportes
 

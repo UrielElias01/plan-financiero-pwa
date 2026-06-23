@@ -41,7 +41,7 @@ Resumen corto:
 - La primera quincena representa el estado actual; por eso no se recalcula completa como una quincena futura.
 - Un movimiento de efectivo/debito en la primera quincena baja `currentSavings` directamente.
 - Una compra de tarjeta no baja el ahorro al capturarla; genera pagos futuros de TDC.
-- El saldo utilizado de TDC representa el siguiente corte mas lo que queda a meses.
+- El saldo utilizado de TDC se captura como el numero real que muestra el banco; si esta en cero, la app usa los campos legacy como respaldo.
 
 ## Desarrollo local
 

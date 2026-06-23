@@ -12,6 +12,7 @@ export type Settings = {
   pointsPayment: number;
   newJulyPurchases: number;
   nonRecurringBalance: number;
+  usedCreditBalance: number;
 };
 
 export type Period = {

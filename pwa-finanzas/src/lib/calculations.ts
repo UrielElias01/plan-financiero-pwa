@@ -32,6 +32,10 @@ export function sum<T>(items: T[], selector: (item: T) => number): number {
   return items.reduce((total, item) => total + selector(item), 0);
 }
 
+function positiveAmount(value: unknown): number {
+  return Math.max(0, asNumber(value));
+}
+
 function localId(prefix: string, index: number): string {
   return globalThis.crypto?.randomUUID?.() || `${prefix}-${Date.now()}-${index}`;
 }
@@ -53,10 +57,18 @@ function normalizeRecurringItems(input: unknown): AppState["recurring"] {
 }
 
 export function normalizeState(input?: Partial<AppState> | null): AppState {
+  const inputSettings = input?.settings || {};
+  const settings = { ...seedState.settings, ...inputSettings };
+  if (!("usedCreditBalance" in inputSettings)) {
+    settings.usedCreditBalance = positiveAmount(
+      settings.previousCardDebt - settings.previousCardPayment - settings.pointsPayment + settings.newJulyPurchases,
+    );
+  }
+
   return {
     ...structuredClone(seedState),
     ...input,
-    settings: { ...seedState.settings, ...(input?.settings || {}) },
+    settings,
     periods: Array.isArray(input?.periods) ? input.periods : structuredClone(seedState.periods),
     recurring: normalizeRecurringItems(input?.recurring),
     transactions: Array.isArray(input?.transactions) ? input.transactions : [],
@@ -114,10 +126,6 @@ export function calculateMonthlyFor(
   });
 }
 
-function positiveAmount(value: unknown): number {
-  return Math.max(0, asNumber(value));
-}
-
 function scheduledAmountFor(transaction: Transaction): number {
   return sum(transaction.paymentSchedule || [], (payment) => positiveAmount(payment.amount));
 }
@@ -128,10 +136,11 @@ export function calculateCardDebtFor(
 ): CardDebtSummary {
   const creditTransactions = inputState.transactions.filter((transaction) => transaction.method === "credit");
   const scheduledPayments = sum(periods, (period) => positiveAmount(-period.cardPayment));
+  const scheduledFromTransactions = sum(creditTransactions, scheduledAmountFor);
   const creditPurchases = sum(creditTransactions, (transaction) =>
     Math.max(positiveAmount(transaction.amount), scheduledAmountFor(transaction)),
   );
-  const calendarBalance = sum(inputState.cardCalendar, (entry) => positiveAmount(entry.total || entry.userPart));
+  const calendarBalance = sum(inputState.cardCalendar, (entry) => positiveAmount(entry.debt));
   const settingsBalance = positiveAmount(
     inputState.settings.previousCardDebt -
       inputState.settings.previousCardPayment -
@@ -139,15 +148,19 @@ export function calculateCardDebtFor(
       inputState.settings.newJulyPurchases,
   );
   const nonRecurringBalance = positiveAmount(inputState.settings.nonRecurringBalance);
-  const totalDebt = Math.max(scheduledPayments, calendarBalance, settingsBalance, nonRecurringBalance);
+  const usedCreditBalance = positiveAmount(inputState.settings.usedCreditBalance);
   const nextPayment = positiveAmount(-(periods.find((period) => period.cardPayment < 0)?.cardPayment || 0));
+  const totalDebt =
+    usedCreditBalance ||
+    settingsBalance ||
+    Math.max(scheduledFromTransactions, nonRecurringBalance, calendarBalance, nextPayment);
 
   return {
     nextPayment,
     installmentBalance: positiveAmount(totalDebt - nextPayment),
     scheduledPayments,
     calendarBalance,
-    settingsBalance: Math.max(settingsBalance, nonRecurringBalance),
+    settingsBalance: Math.max(usedCreditBalance, settingsBalance, nonRecurringBalance),
     creditPurchases,
     totalDebt,
   };

@@ -183,7 +183,7 @@ const guideTopics: GuideTopic[] = [
     id: "card",
     title: "Tarjeta",
     summary: "Muestra pago al corte, saldo utilizado, calendario de deuda, tu parte y saldos no recurrentes por mes.",
-    editable: ["Se alimenta desde tus compras y quincenas", "Los MSI se reflejan en pagos futuros", "El saldo utilizado suma el siguiente corte mas lo que queda a meses", "El calendario base viene del respaldo importado"],
+    editable: ["Se alimenta desde tus compras y quincenas", "Los MSI se reflejan en pagos futuros", "El saldo utilizado se captura desde lo que muestra el banco", "El calendario base viene del respaldo importado"],
     steps: [
       "Revisa la tarjeta Saldo utilizado TDC para saber cuanto aparece ocupado en la tarjeta.",
       "Revisa el mes con barras mas altas.",
@@ -212,7 +212,7 @@ const guideTopics: GuideTopic[] = [
     id: "settings",
     title: "Ajustes",
     summary: "Controla los supuestos base, la plantilla y la sincronizacion cifrada.",
-    editable: ["Ahorro actual", "Renta apartada", "Sueldo", "Renta mensual", "Comida/TDC por defecto", "ChatGPT", "Base de adeudo TDC", "Dias de corte y pago", "Sync cifrado"],
+    editable: ["Ahorro actual", "Renta apartada", "Sueldo", "Renta mensual", "Comida/TDC por defecto", "ChatGPT", "Saldo utilizado TDC", "Dias de corte y pago", "Sync cifrado"],
     steps: [
       "Ajusta los supuestos generales cuando cambie tu vida normal.",
       "Guarda antes de salir de la pantalla.",
@@ -2011,9 +2011,10 @@ function SettingsView({
         <div className="mt-6 rounded-[1.4rem] border border-blue-100 bg-blue-50/50 p-4">
           <p className="eyebrow">Base de tarjeta</p>
           <p className="mt-2 text-sm text-slate-500">
-            Estos campos alimentan el saldo utilizado cuando vienes de un saldo previo o hiciste pagos fuera de Movimientos.
+            El saldo utilizado debe coincidir con lo que muestra tu banco como credito usado. Los campos legacy solo sirven como respaldo si ese saldo esta en cero.
           </p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <Field label="Saldo utilizado TDC"><input className="input" name="usedCreditBalance" type="number" step="0.01" defaultValue={settings.usedCreditBalance} /></Field>
             <Field label="Adeudo previo TDC"><input className="input" name="previousCardDebt" type="number" step="0.01" defaultValue={settings.previousCardDebt} /></Field>
             <Field label="Pago TDC aplicado"><input className="input" name="previousCardPayment" type="number" step="0.01" defaultValue={settings.previousCardPayment} /></Field>
             <Field label="Pago con puntos"><input className="input" name="pointsPayment" type="number" step="0.01" defaultValue={settings.pointsPayment} /></Field>

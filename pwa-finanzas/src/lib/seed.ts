@@ -19,6 +19,7 @@ export const seedState: AppState = {
     pointsPayment: 0,
     newJulyPurchases: 0,
     nonRecurringBalance: 0,
+    usedCreditBalance: 0,
   },
   periods: [
     {

@@ -31,7 +31,7 @@ El boton `Tour` inicia una guia flotante que cambia de pantalla conforme avanzas
 - Si agregas un movimiento de `Efectivo / debito` en esa primera quincena, la app baja `Ahorro actual` porque ese dinero sale de ahorro/debito.
 - Si el debito fue compartido, el ajuste directo al ahorro usa solo tu mitad.
 - Una compra con `Tarjeta de credito` no baja el ahorro al capturarla; se agenda como pago futuro de TDC.
-- La pantalla `Tarjeta` muestra `Pago al corte` y `Saldo utilizado TDC`. Ese saldo representa el siguiente corte mas lo que queda a meses.
+- La pantalla `Tarjeta` muestra `Pago al corte` y `Saldo utilizado TDC`. Ese saldo debe coincidir con el credito usado que muestra el banco; en Ajustes puedes capturarlo directamente.
 - Los campos avanzados de `Ajustes > Base de tarjeta` permiten corregir saldo previo, pagos aplicados, puntos y saldos no recurrentes.
 
 La documentacion completa del modelo esta en `../docs/FINANCIAL_MODEL.md`.
