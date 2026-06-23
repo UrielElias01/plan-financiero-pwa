@@ -1,6 +1,17 @@
 import type { AppState } from "./types";
 
-export const today = new Date().toISOString().slice(0, 10);
+export function dateInputValue(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const valueFor = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || "";
+  return `${valueFor("year")}-${valueFor("month")}-${valueFor("day")}`;
+}
+
+export const today = dateInputValue();
 
 export const seedState: AppState = {
   version: 1,

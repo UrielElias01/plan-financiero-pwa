@@ -1,4 +1,4 @@
-import { seedState } from "./seed";
+import { seedState, today as defaultToday } from "./seed";
 import type {
   AppState,
   CalculatedPeriod,
@@ -36,8 +36,174 @@ function positiveAmount(value: unknown): number {
   return Math.max(0, asNumber(value));
 }
 
+function baseSettingsBalance(settings: AppState["settings"]): number {
+  return positiveAmount(
+    settings.previousCardDebt -
+      settings.previousCardPayment -
+      settings.pointsPayment +
+      settings.newJulyPurchases +
+      settings.nonRecurringBalance,
+  );
+}
+
 function localId(prefix: string, index: number): string {
   return globalThis.crypto?.randomUUID?.() || `${prefix}-${Date.now()}-${index}`;
+}
+
+type PeriodDateParts = {
+  year: number;
+  month: number;
+  half: 1 | 2;
+};
+
+type RecurringEffects = {
+  debitServices: number;
+  creditCharges: number;
+  cardPayment: number;
+};
+
+type RecurringPeriodTotals = {
+  debit: number;
+  credit: number;
+  firstCreditDate: string | null;
+};
+
+const monthByName: Record<string, number> = {
+  Enero: 1,
+  Febrero: 2,
+  Marzo: 3,
+  Abril: 4,
+  Mayo: 5,
+  Junio: 6,
+  Julio: 7,
+  Agosto: 8,
+  Septiembre: 9,
+  Octubre: 10,
+  Noviembre: 11,
+  Diciembre: 12,
+};
+
+function periodDateParts(period: Period): PeriodDateParts | null {
+  const idMatch = /^(\d{4})-(\d{2})-h([12])$/.exec(period.id);
+  if (idMatch) {
+    return {
+      year: asNumber(idMatch[1]),
+      month: asNumber(idMatch[2]),
+      half: idMatch[3] === "1" ? 1 : 2,
+    };
+  }
+
+  const normalizedLabel = period.label.toLowerCase();
+  const half = normalizedLabel.startsWith("1a") ? 1 : normalizedLabel.startsWith("2a") ? 2 : null;
+  const month = monthByName[period.month];
+  const yearMatch = /(\d{4})/.exec(period.id);
+  const year = yearMatch ? asNumber(yearMatch[1]) : asNumber(defaultToday.slice(0, 4));
+
+  return month && half ? { year, month, half } : null;
+}
+
+function padDatePart(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function dateForDay(year: number, month: number, day: number): string {
+  const lastDay = new Date(year, month, 0).getDate();
+  const safeDay = Math.min(Math.max(1, Math.trunc(day)), lastDay);
+  return `${year}-${padDatePart(month)}-${padDatePart(safeDay)}`;
+}
+
+function recurringHalf(day: number): 1 | 2 {
+  return day <= 15 ? 1 : 2;
+}
+
+function recurringDateForPeriod(period: Period, item: AppState["recurring"][number]): string | null {
+  const parts = periodDateParts(period);
+  if (!parts || !item.active || positiveAmount(item.amount) <= 0) return null;
+  if (parts.half !== recurringHalf(item.day)) return null;
+  return dateForDay(parts.year, parts.month, item.day);
+}
+
+function emptyRecurringEffects(): RecurringEffects {
+  return {
+    debitServices: 0,
+    creditCharges: 0,
+    cardPayment: 0,
+  };
+}
+
+function recurringEffectsFor(effects: Map<string, RecurringEffects>, periodId: string): RecurringEffects {
+  const existing = effects.get(periodId);
+  if (existing) return existing;
+  const next = emptyRecurringEffects();
+  effects.set(periodId, next);
+  return next;
+}
+
+function recurringTransactionFor(period: Period, amount: number, date: string): Transaction {
+  return {
+    id: `recurring-${period.id}`,
+    date,
+    description: "Recurrentes TDC",
+    amount: positiveAmount(amount),
+    category: "Recurrente",
+    method: "credit",
+    periodId: period.id,
+    shared: false,
+    installments: 1,
+    paymentSchedule: [],
+  };
+}
+
+function recurringTotalsForPeriod(inputState: AppState, period: Period): RecurringPeriodTotals {
+  return inputState.recurring.reduce<RecurringPeriodTotals>(
+    (totals, item) => {
+      const chargeDate = recurringDateForPeriod(period, item);
+      if (!chargeDate) return totals;
+
+      const amount = positiveAmount(item.amount);
+      if (item.method === "credit") {
+        totals.credit += amount;
+        totals.firstCreditDate ||= chargeDate;
+      } else {
+        totals.debit += amount;
+      }
+
+      return totals;
+    },
+    { debit: 0, credit: 0, firstCreditDate: null },
+  );
+}
+
+function buildRecurringEffects(inputState: AppState): Map<string, RecurringEffects> {
+  const effects = new Map<string, RecurringEffects>();
+
+  for (const period of inputState.periods) {
+    const totals = recurringTotalsForPeriod(inputState, period);
+    const missingDebit = positiveAmount(totals.debit - positiveAmount(-period.debitServices));
+    const missingCredit = positiveAmount(totals.credit - positiveAmount(period.chatGptCredit));
+
+    if (missingDebit > 0) {
+      recurringEffectsFor(effects, period.id).debitServices -= missingDebit;
+    }
+
+    if (missingCredit > 0 && totals.firstCreditDate) {
+      recurringEffectsFor(effects, period.id).creditCharges += missingCredit;
+      const schedule = buildPaymentScheduleFor(inputState, recurringTransactionFor(period, missingCredit, totals.firstCreditDate));
+      for (const payment of schedule) {
+        recurringEffectsFor(effects, payment.periodId).cardPayment -= payment.amount;
+      }
+    }
+  }
+
+  return effects;
+}
+
+function recurringCreditChargesThrough(inputState: AppState, asOf = defaultToday): number {
+  return sum(inputState.periods, (period) => {
+    const totals = recurringTotalsForPeriod(inputState, period);
+    if (!totals.firstCreditDate || totals.firstCreditDate > asOf) return 0;
+    return positiveAmount(totals.credit - positiveAmount(period.chatGptCredit));
+  });
 }
 
 function normalizeRecurringItems(input: unknown): AppState["recurring"] {
@@ -59,10 +225,9 @@ function normalizeRecurringItems(input: unknown): AppState["recurring"] {
 export function normalizeState(input?: Partial<AppState> | null): AppState {
   const inputSettings = input?.settings || {};
   const settings = { ...seedState.settings, ...inputSettings };
-  if (!("usedCreditBalance" in inputSettings)) {
-    settings.usedCreditBalance = positiveAmount(
-      settings.previousCardDebt - settings.previousCardPayment - settings.pointsPayment + settings.newJulyPurchases,
-    );
+  const legacyBalance = baseSettingsBalance(settings);
+  if (!("usedCreditBalance" in inputSettings) || (positiveAmount(settings.usedCreditBalance) === 0 && legacyBalance > 0)) {
+    settings.usedCreditBalance = legacyBalance;
   }
 
   return {
@@ -81,13 +246,15 @@ export function normalizeState(input?: Partial<AppState> | null): AppState {
 
 export function calculatePeriodsFor(inputState: AppState): CalculatedPeriod[] {
   let running = inputState.settings.currentSavings;
+  const recurringEffects = buildRecurringEffects(inputState);
   return inputState.periods.map((period, index) => {
+    const recurring = recurringEffects.get(period.id) || emptyRecurringEffects();
     const income = period.salary + period.extraIncome + period.partnerIncome;
-    const cashExpenses = period.rent + period.debitServices;
-    const cardPayment = period.cardPayment;
+    const cashExpenses = period.rent + period.debitServices + recurring.debitServices;
+    const cardPayment = period.cardPayment + recurring.cardPayment;
     const flow = index === 0 ? 0 : income + cashExpenses + cardPayment;
     running = index === 0 ? inputState.settings.currentSavings : running + flow;
-    const creditCharges = period.foodCredit + period.chatGptCredit;
+    const creditCharges = period.foodCredit + period.chatGptCredit + recurring.creditCharges;
     return {
       ...period,
       income,
@@ -137,30 +304,27 @@ export function calculateCardDebtFor(
   const creditTransactions = inputState.transactions.filter((transaction) => transaction.method === "credit");
   const scheduledPayments = sum(periods, (period) => positiveAmount(-period.cardPayment));
   const scheduledFromTransactions = sum(creditTransactions, scheduledAmountFor);
-  const creditPurchases = sum(creditTransactions, (transaction) =>
-    Math.max(positiveAmount(transaction.amount), scheduledAmountFor(transaction)),
+  const creditPurchases = sum(creditTransactions, (transaction) => positiveAmount(transaction.amount));
+  const creditPurchasesToDate = sum(creditTransactions, (transaction) =>
+    !transaction.date || transaction.date <= defaultToday ? positiveAmount(transaction.amount) : 0,
   );
+  const recurringPurchasesToDate = recurringCreditChargesThrough(inputState);
   const calendarBalance = sum(inputState.cardCalendar, (entry) => positiveAmount(entry.debt));
-  const settingsBalance = positiveAmount(
-    inputState.settings.previousCardDebt -
-      inputState.settings.previousCardPayment -
-      inputState.settings.pointsPayment +
-      inputState.settings.newJulyPurchases,
-  );
-  const nonRecurringBalance = positiveAmount(inputState.settings.nonRecurringBalance);
+  const settingsBalance = baseSettingsBalance(inputState.settings);
   const usedCreditBalance = positiveAmount(inputState.settings.usedCreditBalance);
   const nextPayment = positiveAmount(-(periods.find((period) => period.cardPayment < 0)?.cardPayment || 0));
+  const calculatedBalance = settingsBalance || creditPurchasesToDate + recurringPurchasesToDate;
   const totalDebt =
     usedCreditBalance ||
-    settingsBalance ||
-    Math.max(scheduledFromTransactions, nonRecurringBalance, calendarBalance, nextPayment);
+    calculatedBalance ||
+    Math.max(scheduledFromTransactions, calendarBalance, nextPayment);
 
   return {
     nextPayment,
     installmentBalance: positiveAmount(totalDebt - nextPayment),
     scheduledPayments,
     calendarBalance,
-    settingsBalance: Math.max(usedCreditBalance, settingsBalance, nonRecurringBalance),
+    settingsBalance: usedCreditBalance || settingsBalance || recurringPurchasesToDate,
     creditPurchases,
     totalDebt,
   };
@@ -220,9 +384,14 @@ export function applyTransactionToPeriods(periods: Period[], transaction: Transa
 export function applyTransactionToState(inputState: AppState, transaction: Transaction, direction = 1): AppState {
   const selectedIndex = inputState.periods.findIndex((period) => period.id === transaction.periodId);
   const settings = { ...inputState.settings };
+  const amount = positiveAmount(transaction.amount);
+
+  if (transaction.method === "credit") {
+    const currentBalance = positiveAmount(settings.usedCreditBalance) || baseSettingsBalance(settings);
+    settings.usedCreditBalance = positiveAmount(currentBalance + direction * amount);
+  }
 
   if (transaction.method === "cash" && selectedIndex === 0) {
-    const amount = asNumber(transaction.amount);
     const userShare = transaction.shared ? amount / 2 : amount;
     settings.currentSavings -= direction * userShare;
   }

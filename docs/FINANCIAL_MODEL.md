@@ -70,10 +70,24 @@ Reglas:
 
 - La compra aumenta cargos de tarjeta de la quincena donde se capturo.
 - No baja el ahorro inmediatamente.
+- Aumenta `usedCreditBalance` por el monto completo de la compra, incluso si es MSI.
 - Genera un calendario de pago segun `installments`.
 - Una exhibicion cae en la siguiente segunda quincena disponible.
 - 3 MSI o 6 MSI reparten el total entre las siguientes segundas quincenas disponibles.
 - Si se marca como compartido, se agrega `partnerIncome` por la mitad para reflejar que la pareja aporta esa parte.
+- Al borrar la compra, se revierte el cargo quincenal, el calendario de pagos y el aumento de `usedCreditBalance`.
+
+## Recurrentes
+
+Los recurrentes activos se proyectan en la quincena que corresponde a su dia:
+
+- Dias 1-15 entran en la primera quincena del mes.
+- Dias 16-31 entran en la segunda quincena del mes.
+- Si el mes no tiene ese dia, se usa el ultimo dia del mes.
+- Los recurrentes de debito solo se agregan si `debitServices` no cubre ya ese monto.
+- Los recurrentes de credito solo se agregan si `chatGptCredit` no cubre ya ese monto.
+
+Esta regla evita duplicar respaldos antiguos donde las suscripciones ya estaban capturadas manualmente en las quincenas.
 
 ## Saldo utilizado de tarjeta
 
@@ -88,8 +102,7 @@ Componentes:
 
 - `calendarBalance`: suma de saldos no recurrentes (`debt`) desde `cardCalendar`; no suma los totales mensuales completos.
 - `usedCreditBalance`: saldo utilizado real capturado en Ajustes.
-- `settingsBalance`: respaldo legacy calculado como `previousCardDebt - previousCardPayment - pointsPayment + newJulyPurchases`.
-- `nonRecurringBalance`: saldo manual no recurrente.
+- `settingsBalance`: respaldo legacy calculado como `previousCardDebt - previousCardPayment - pointsPayment + newJulyPurchases + nonRecurringBalance`.
 - `scheduledPayments`: suma de pagos TDC pendientes en quincenas.
 - `scheduledFromTransactions`: suma de pagos pendientes generados por movimientos de tarjeta.
 - `creditPurchases`: compras de credito registradas en Movimientos; se muestra como referencia, pero no se suma encima si ya esta calendarizada.
@@ -97,11 +110,11 @@ Componentes:
 Formula:
 
 ```text
-totalDebt = usedCreditBalance || settingsBalance || max(scheduledFromTransactions, nonRecurringBalance, calendarBalance, nextPayment)
+totalDebt = usedCreditBalance || settingsBalance || comprasTdcHastaHoy || max(scheduledFromTransactions, calendarBalance, nextPayment)
 installmentBalance = max(totalDebt - nextPayment, 0)
 ```
 
-Esto evita inflar el saldo sumando meses futuros completos del calendario. El calendario sirve como referencia; el numero confiable es el saldo utilizado real del banco.
+Esto evita inflar el saldo sumando meses futuros completos del calendario o historial viejo ya pagado. El numero confiable es `usedCreditBalance`; cuando agregas o borras compras TDC desde la app, ese saldo se mueve con la compra.
 
 ## Reportes
 

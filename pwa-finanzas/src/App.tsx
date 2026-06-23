@@ -2011,7 +2011,7 @@ function SettingsView({
         <div className="mt-6 rounded-[1.4rem] border border-blue-100 bg-blue-50/50 p-4">
           <p className="eyebrow">Base de tarjeta</p>
           <p className="mt-2 text-sm text-slate-500">
-            El saldo utilizado debe coincidir con lo que muestra tu banco como credito usado. Los campos legacy solo sirven como respaldo si ese saldo esta en cero.
+            El saldo utilizado debe coincidir con lo que muestra tu banco como credito usado. Al agregar o borrar compras TDC, este saldo se ajusta con el monto completo.
           </p>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <Field label="Saldo utilizado TDC"><input className="input" name="usedCreditBalance" type="number" step="0.01" defaultValue={settings.usedCreditBalance} /></Field>
