@@ -69,6 +69,7 @@ type ConfirmConfig = {
   danger?: boolean;
   resolve: (value: boolean) => void;
 };
+type RecurringDraft = Omit<RecurringItem, "id"> & { id?: string };
 
 type NavItem = {
   id: ViewId;
@@ -549,7 +550,7 @@ const guidedTourSteps: GuidedTourStep[] = [
   },
 ];
 
-const emptyRecurring: Omit<RecurringItem, "id"> & { id?: string } = {
+const emptyRecurring: RecurringDraft = {
   id: "",
   name: "",
   amount: 0,
@@ -661,6 +662,7 @@ export function App() {
   const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);
   const [periodDraft, setPeriodDraft] = useState<Period | null>(null);
   const [recurringDraft, setRecurringDraft] = useState(emptyRecurring);
+  const [recurringDraftIndex, setRecurringDraftIndex] = useState<number | null>(null);
   const [syncDraft, setSyncDraft] = useState(cloneSeed().sync);
   const [passphrase, setPassphrase] = useState("");
   const [passphraseConfirm, setPassphraseConfirm] = useState("");
@@ -942,18 +944,32 @@ export function App() {
 
   async function submitRecurring(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const indexById = recurringDraft.id ? state.recurring.findIndex((entry) => entry.id === recurringDraft.id) : -1;
+    const editIndex = indexById >= 0 ? indexById : recurringDraftIndex ?? -1;
     const item: RecurringItem = {
-      id: recurringDraft.id || crypto.randomUUID(),
+      id: recurringDraft.id || state.recurring[editIndex]?.id || crypto.randomUUID(),
       name: recurringDraft.name,
       amount: asNumber(recurringDraft.amount),
       day: asNumber(recurringDraft.day, 1),
       method: recurringDraft.method,
       active: recurringDraft.active,
     };
-    const index = state.recurring.findIndex((entry) => entry.id === item.id);
-    const recurring = index >= 0 ? state.recurring.map((entry) => (entry.id === item.id ? item : entry)) : [...state.recurring, item];
+    const recurring =
+      editIndex >= 0
+        ? state.recurring.map((entry, index) => (index === editIndex ? item : entry))
+        : [...state.recurring, item];
     await commit({ ...state, recurring }, "Recurrente guardado");
+    clearRecurringDraft();
+  }
+
+  function editRecurring(item: RecurringItem, index: number) {
+    setRecurringDraft({ ...item });
+    setRecurringDraftIndex(index);
+  }
+
+  function clearRecurringDraft() {
     setRecurringDraft({ ...emptyRecurring });
+    setRecurringDraftIndex(null);
   }
 
   async function deleteRecurring(item: RecurringItem) {
@@ -965,6 +981,7 @@ export function App() {
     });
     if (!confirmed) return;
     await commit({ ...state, recurring: state.recurring.filter((entry) => entry.id !== item.id) }, "Recurrente borrado");
+    if (recurringDraft.id === item.id) clearRecurringDraft();
   }
 
   async function submitSettings(event: FormEvent<HTMLFormElement>) {
@@ -1261,8 +1278,9 @@ export function App() {
                 recurring={state.recurring}
                 draft={recurringDraft}
                 setDraft={setRecurringDraft}
+                onClear={clearRecurringDraft}
                 onSubmit={submitRecurring}
-                onEdit={(item) => setRecurringDraft({ ...item })}
+                onEdit={editRecurring}
                 onDelete={deleteRecurring}
               />
             ) : null}
@@ -1705,22 +1723,31 @@ function RecurringView({
   recurring,
   draft,
   setDraft,
+  onClear,
   onSubmit,
   onEdit,
   onDelete,
 }: {
   recurring: RecurringItem[];
-  draft: Omit<RecurringItem, "id"> & { id?: string };
-  setDraft: (draft: Omit<RecurringItem, "id"> & { id?: string }) => void;
+  draft: RecurringDraft;
+  setDraft: (draft: RecurringDraft) => void;
+  onClear: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onEdit: (item: RecurringItem) => void;
+  onEdit: (item: RecurringItem, index: number) => void;
   onDelete: (item: RecurringItem) => void;
 }) {
+  const formRef = useRef<HTMLFormElement>(null);
+
+  function handleEdit(item: RecurringItem, index: number) {
+    onEdit(item, index);
+    window.setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(320px,.75fr)_minmax(0,1.25fr)]">
-      <form className="panel self-start" onSubmit={onSubmit} data-tour="recurring-form">
+      <form ref={formRef} className="panel self-start scroll-mt-24" onSubmit={onSubmit} data-tour="recurring-form">
         <p className="eyebrow">Editar</p>
-        <h3 className="mb-5 text-2xl font-black text-navy">Gasto recurrente</h3>
+        <h3 className="mb-5 text-2xl font-black text-navy">{draft.id ? "Editar recurrente" : "Nuevo recurrente"}</h3>
         <Field label="Servicio">
           <input className="input" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} required placeholder="Ej. Spotify" />
         </Field>
@@ -1749,9 +1776,9 @@ function RecurringView({
         <div className="mt-2 flex gap-2">
           <button className="button-primary flex-1" type="submit">
             <Check size={18} />
-            Guardar
+            {draft.id ? "Guardar cambios" : "Guardar"}
           </button>
-          <button className="button-ghost" type="button" onClick={() => setDraft(emptyRecurring)}>
+          <button className="button-ghost" type="button" onClick={onClear}>
             Limpiar
           </button>
         </div>
@@ -1762,7 +1789,7 @@ function RecurringView({
         <h3 className="mb-5 text-2xl font-black text-navy">Recurrentes</h3>
         {recurring.length ? (
           <div className="grid gap-3">
-            {recurring.map((item) => (
+            {recurring.map((item, index) => (
               <article key={item.id} className="flex flex-col gap-3 rounded-3xl border border-blue-100 bg-white/75 p-4 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <strong className="text-navy">{item.name}</strong>
@@ -1772,7 +1799,7 @@ function RecurringView({
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 md:justify-end">
                   <span className="pill">{formatMoney(item.amount)}</span>
-                  <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(item)}>
+                  <button className="button-ghost px-3 py-2" type="button" onClick={() => handleEdit(item, index)}>
                     Editar
                   </button>
                   <button className="button-ghost px-3 py-2 text-red-700" type="button" onClick={() => onDelete(item)}>

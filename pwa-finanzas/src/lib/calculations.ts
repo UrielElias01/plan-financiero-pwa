@@ -32,13 +32,33 @@ export function sum<T>(items: T[], selector: (item: T) => number): number {
   return items.reduce((total, item) => total + selector(item), 0);
 }
 
+function localId(prefix: string, index: number): string {
+  return globalThis.crypto?.randomUUID?.() || `${prefix}-${Date.now()}-${index}`;
+}
+
+function normalizeRecurringItems(input: unknown): AppState["recurring"] {
+  if (!Array.isArray(input)) return [];
+
+  return input.map((item, index) => {
+    const recurring = item as Partial<AppState["recurring"][number]>;
+    return {
+      id: typeof recurring.id === "string" && recurring.id.trim() ? recurring.id : localId("recurring", index),
+      name: String(recurring.name || `Recurrente ${index + 1}`),
+      amount: asNumber(recurring.amount),
+      day: Math.min(31, Math.max(1, asNumber(recurring.day, 1))),
+      method: recurring.method === "credit" ? "credit" : "debit",
+      active: typeof recurring.active === "boolean" ? recurring.active : true,
+    };
+  });
+}
+
 export function normalizeState(input?: Partial<AppState> | null): AppState {
   return {
     ...structuredClone(seedState),
     ...input,
     settings: { ...seedState.settings, ...(input?.settings || {}) },
     periods: Array.isArray(input?.periods) ? input.periods : structuredClone(seedState.periods),
-    recurring: Array.isArray(input?.recurring) ? input.recurring : [],
+    recurring: normalizeRecurringItems(input?.recurring),
     transactions: Array.isArray(input?.transactions) ? input.transactions : [],
     cardCalendar: Array.isArray(input?.cardCalendar)
       ? input.cardCalendar
