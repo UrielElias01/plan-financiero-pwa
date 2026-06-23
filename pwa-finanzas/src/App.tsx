@@ -181,10 +181,10 @@ const guideTopics: GuideTopic[] = [
   {
     id: "card",
     title: "Tarjeta",
-    summary: "Muestra pago al corte, adeudo total, calendario de deuda, tu parte y saldos no recurrentes por mes.",
-    editable: ["Se alimenta desde tus compras y quincenas", "Los MSI se reflejan en pagos futuros", "El adeudo total suma base importada y compras TDC registradas", "El calendario base viene del respaldo importado"],
+    summary: "Muestra pago al corte, saldo utilizado, calendario de deuda, tu parte y saldos no recurrentes por mes.",
+    editable: ["Se alimenta desde tus compras y quincenas", "Los MSI se reflejan en pagos futuros", "El saldo utilizado suma el siguiente corte mas lo que queda a meses", "El calendario base viene del respaldo importado"],
     steps: [
-      "Revisa la tarjeta Adeudo total TDC para saber cuanto debes completo, no solo el siguiente corte.",
+      "Revisa la tarjeta Saldo utilizado TDC para saber cuanto aparece ocupado en la tarjeta.",
       "Revisa el mes con barras mas altas.",
       "Compara total contra parte tuya.",
       "Si un pago no cuadra, ve a Movimientos o Quincenas para ajustar el origen.",
@@ -1437,7 +1437,7 @@ function Dashboard({
         <MetricCard label="Ahorro actual" value={formatMoney(state.settings.currentSavings)} note={`Renta apartada: ${formatMoney(state.settings.rentReserve)}`} icon={WalletCards} />
         <MetricCard label="Tras 1a julio" value={formatMoney(periods.find((period) => period.id === "2026-07-h1")?.savings || 0)} note="Sueldo del 30 jun aplicado" icon={CalendarClock} />
         <MetricCard label="Pago TDC julio" value={formatMoney(Math.abs(periods.find((period) => period.id === "2026-07-h2")?.cardPayment || 0))} note="Estimado al 25 jul" icon={CreditCard} />
-        <MetricCard label="Adeudo total TDC" value={formatMoney(cardDebt.totalDebt)} note="Base + compras TDC" icon={CreditCard} />
+        <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Corte + MSI" icon={CreditCard} />
         <MetricCard label="Cierre proyectado" value={formatMoney(periods.at(-1)?.savings || 0)} note="Noviembre 2026" icon={ChartSpline} />
       </section>
 
@@ -1796,9 +1796,9 @@ function CardView({ state, cardDebt }: { state: AppState; cardDebt: CardDebtSumm
     <div className="grid gap-5">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Pago al corte" value={formatMoney(cardDebt.nextPayment)} note="Proximo pago programado" icon={CalendarClock} />
-        <MetricCard label="Adeudo total TDC" value={formatMoney(cardDebt.totalDebt)} note="Base + compras de credito" icon={CreditCard} />
+        <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Corte + MSI" icon={CreditCard} />
+        <MetricCard label="A meses / futuro" value={formatMoney(cardDebt.installmentBalance)} note="Despues del siguiente corte" icon={ChartSpline} />
         <MetricCard label="Compras TDC" value={formatMoney(cardDebt.creditPurchases)} note="Movimientos registrados" icon={WalletCards} />
-        <MetricCard label="Base/calendario" value={formatMoney(Math.max(cardDebt.calendarBalance, cardDebt.settingsBalance))} note="Saldo importado o manual" icon={ChartSpline} />
       </section>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,.8fr)]">
@@ -1984,7 +1984,7 @@ function SettingsView({
         <div className="mt-6 rounded-[1.4rem] border border-blue-100 bg-blue-50/50 p-4">
           <p className="eyebrow">Base de tarjeta</p>
           <p className="mt-2 text-sm text-slate-500">
-            Estos campos alimentan el adeudo total cuando vienes de un saldo previo o hiciste pagos fuera de Movimientos.
+            Estos campos alimentan el saldo utilizado cuando vienes de un saldo previo o hiciste pagos fuera de Movimientos.
           </p>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <Field label="Adeudo previo TDC"><input className="input" name="previousCardDebt" type="number" step="0.01" defaultValue={settings.previousCardDebt} /></Field>

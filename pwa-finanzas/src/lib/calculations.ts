@@ -106,14 +106,10 @@ export function calculateCardDebtFor(
   inputState: AppState,
   periods: CalculatedPeriod[] = calculatePeriodsFor(inputState),
 ): CardDebtSummary {
+  const creditTransactions = inputState.transactions.filter((transaction) => transaction.method === "credit");
   const scheduledPayments = sum(periods, (period) => positiveAmount(-period.cardPayment));
-  const scheduledFromTransactions = sum(
-    inputState.transactions.filter((transaction) => transaction.method === "credit"),
-    scheduledAmountFor,
-  );
-  const creditPurchases = sum(
-    inputState.transactions.filter((transaction) => transaction.method === "credit"),
-    (transaction) => Math.max(positiveAmount(transaction.amount), scheduledAmountFor(transaction)),
+  const creditPurchases = sum(creditTransactions, (transaction) =>
+    Math.max(positiveAmount(transaction.amount), scheduledAmountFor(transaction)),
   );
   const calendarBalance = sum(inputState.cardCalendar, (entry) => positiveAmount(entry.total || entry.userPart));
   const settingsBalance = positiveAmount(
@@ -123,17 +119,17 @@ export function calculateCardDebtFor(
       inputState.settings.newJulyPurchases,
   );
   const nonRecurringBalance = positiveAmount(inputState.settings.nonRecurringBalance);
-  const scheduledBase = positiveAmount(scheduledPayments - scheduledFromTransactions);
-  const baseDebt = Math.max(calendarBalance, settingsBalance, nonRecurringBalance, scheduledBase);
-  const nextPayment = periods.find((period) => period.cardPayment < 0)?.cardPayment;
+  const totalDebt = Math.max(scheduledPayments, calendarBalance, settingsBalance, nonRecurringBalance);
+  const nextPayment = positiveAmount(-(periods.find((period) => period.cardPayment < 0)?.cardPayment || 0));
 
   return {
-    nextPayment: positiveAmount(-(nextPayment || 0)),
+    nextPayment,
+    installmentBalance: positiveAmount(totalDebt - nextPayment),
     scheduledPayments,
     calendarBalance,
     settingsBalance: Math.max(settingsBalance, nonRecurringBalance),
     creditPurchases,
-    totalDebt: baseDebt + creditPurchases,
+    totalDebt,
   };
 }
 

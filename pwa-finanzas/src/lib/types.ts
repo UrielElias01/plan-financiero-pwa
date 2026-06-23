@@ -66,6 +66,7 @@ export type CardCalendarEntry = {
 
 export type CardDebtSummary = {
   nextPayment: number;
+  installmentBalance: number;
   scheduledPayments: number;
   calendarBalance: number;
   settingsBalance: number;

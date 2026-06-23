@@ -1,6 +1,6 @@
 # Modelo financiero
 
-Este documento describe las reglas que usa la PWA para convertir quincenas, movimientos y compras de tarjeta en ahorro proyectado y adeudo total.
+Este documento describe las reglas que usa la PWA para convertir quincenas, movimientos y compras de tarjeta en ahorro proyectado y saldo utilizado de TDC.
 
 ## Conceptos base
 
@@ -74,31 +74,31 @@ Reglas:
 - 3 MSI o 6 MSI reparten el total entre las siguientes segundas quincenas disponibles.
 - Si se marca como compartido, se agrega `partnerIncome` por la mitad para reflejar que la pareja aporta esa parte.
 
-## Adeudo total de tarjeta
+## Saldo utilizado de tarjeta
 
 La pantalla `Tarjeta` muestra dos ideas distintas:
 
 - `Pago al corte`: el siguiente pago programado de TDC.
-- `Adeudo total TDC`: el saldo completo estimado, no solo el corte inmediato.
+- `Saldo utilizado TDC`: el saldo ocupado de la tarjeta, equivalente al siguiente corte mas lo que queda a meses.
 
-El adeudo total se calcula en `calculateCardDebtFor`.
+El saldo utilizado se calcula en `calculateCardDebtFor`.
 
 Componentes:
 
 - `calendarBalance`: suma de la base importada desde `cardCalendar` usando `total` o, si no existe, `userPart`.
 - `settingsBalance`: `previousCardDebt - previousCardPayment - pointsPayment + newJulyPurchases`.
 - `nonRecurringBalance`: saldo manual no recurrente.
-- `scheduledBase`: pagos de TDC existentes en quincenas que no vienen de movimientos nuevos.
-- `creditPurchases`: compras de credito registradas en Movimientos.
+- `scheduledPayments`: suma de pagos TDC pendientes en quincenas.
+- `creditPurchases`: compras de credito registradas en Movimientos; se muestra como referencia, pero no se suma encima si ya esta calendarizada.
 
 Formula:
 
 ```text
-baseDebt = max(calendarBalance, settingsBalance, nonRecurringBalance, scheduledBase)
-totalDebt = baseDebt + creditPurchases
+totalDebt = max(scheduledPayments, calendarBalance, settingsBalance, nonRecurringBalance)
+installmentBalance = max(totalDebt - nextPayment, 0)
 ```
 
-Esto permite conservar la base importada/manual y, al mismo tiempo, sumar las compras nuevas que captures con tarjeta.
+Esto evita inflar el saldo sumando dos veces compras que ya aparecen dentro del siguiente corte o de los MSI.
 
 ## Reportes
 
@@ -122,7 +122,7 @@ Convencion usada en la app:
 - salidas de efectivo/debito negativas;
 - pagos de tarjeta negativos;
 - compras de tarjeta positivas dentro de `foodCredit`/`chatGptCredit`, porque son cargos antes de pagarse;
-- el adeudo total se muestra como numero positivo para lectura humana.
+- el saldo utilizado de TDC se muestra como numero positivo para lectura humana.
 
 ## Donde tocar si cambia la logica
 

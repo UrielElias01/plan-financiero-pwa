@@ -23,7 +23,7 @@ La app publica no debe contener datos personales. Los importes reales viven en r
 - Ahorro actual y renta apartada por separado.
 - Movimientos de tarjeta de credito, efectivo o debito.
 - Pagos con tarjeta a una exhibicion, 3 MSI o 6 MSI.
-- Adeudo total de tarjeta, adicional al pago al corte.
+- Saldo utilizado de tarjeta, adicional al pago al corte.
 - Pagos de efectivo/debito descontados del ahorro cuando aplican a la quincena base.
 - Compras compartidas con pareja para separar total cargado vs carga personal.
 - Reportes mensuales con graficas y exportacion CSV/JSON.
@@ -41,7 +41,7 @@ Resumen corto:
 - La primera quincena representa el estado actual; por eso no se recalcula completa como una quincena futura.
 - Un movimiento de efectivo/debito en la primera quincena baja `currentSavings` directamente.
 - Una compra de tarjeta no baja el ahorro al capturarla; genera pagos futuros de TDC.
-- El adeudo total de TDC combina base importada/manual y compras de credito registradas.
+- El saldo utilizado de TDC representa el siguiente corte mas lo que queda a meses.
 
 ## Desarrollo local
 
