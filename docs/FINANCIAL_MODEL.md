@@ -110,14 +110,14 @@ Esta regla evita duplicar respaldos antiguos donde las suscripciones ya estaban 
 La pantalla `Tarjeta` muestra dos ideas distintas:
 
 - `Pago al corte`: el siguiente pago programado de TDC.
-- `Saldo utilizado TDC`: el saldo ocupado de la tarjeta que muestra el banco, equivalente al siguiente corte mas lo que queda a meses.
+- `Saldo utilizado TDC`: el saldo ocupado total de la tarjeta que muestra el banco. No es solo el corte; incluye compras pendientes, MSI vivos y cargos de tarjeta ya aplicados.
 
 El saldo utilizado se calcula en `calculateCardDebtFor`.
 
 Componentes:
 
 - `calendarBalance`: suma de saldos no recurrentes (`debt`) desde `cardCalendar`; no suma los totales mensuales completos.
-- `usedCreditBalance`: saldo utilizado real capturado en Ajustes.
+- `usedCreditBalance`: saldo utilizado real capturado en Ajustes. Si viene de un respaldo viejo con el mismo valor que `nonRecurringBalance` o el saldo legacy, se recalcula para no quedarse congelado.
 - `settingsBalance`: respaldo legacy sin doble conteo. Usa `previousCardDebt - previousCardPayment - pointsPayment + newJulyPurchases`, comparado contra `nonRecurringBalance` cuando ese campo ya representa el total.
 - `scheduledPayments`: suma de pagos TDC pendientes en quincenas.
 - `scheduledFromTransactions`: suma de pagos pendientes generados por movimientos de tarjeta.
@@ -127,11 +127,11 @@ Componentes:
 Formula:
 
 ```text
-totalDebt = usedCreditBalance || saldoCalculadoSinDuplicar || max(scheduledFromTransactions, calendarBalance, nextPayment)
+totalDebt = usedCreditBalanceValido || saldoCalculadoSinDuplicar || max(scheduledFromTransactions, calendarBalance, nextPayment)
 installmentBalance = max(totalDebt - nextPayment, 0)
 ```
 
-Esto evita inflar el saldo sumando meses futuros completos del calendario o historial viejo ya pagado. El numero confiable es `usedCreditBalance`; cuando agregas o borras compras TDC desde la app, ese saldo sube o baja con la compra. Cuando registras un pago TDC aplicado, baja por el monto pagado.
+Esto evita inflar el saldo sumando meses futuros completos del calendario o historial viejo ya pagado. El numero confiable es `usedCreditBalance`, salvo cuando detectamos que solo es un valor legacy congelado como `nonRecurringBalance`. Cuando agregas o borras compras TDC desde la app, ese saldo sube o baja con la compra completa. Cuando registras un pago TDC aplicado, baja por el monto pagado.
 
 ## Reportes
 

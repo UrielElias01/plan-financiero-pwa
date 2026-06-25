@@ -183,7 +183,7 @@ const guideTopics: GuideTopic[] = [
   {
     id: "card",
     title: "Tarjeta",
-    summary: "Muestra pago al corte, saldo utilizado, calendario de deuda, tu parte y saldos no recurrentes por mes.",
+    summary: "Muestra pago al corte, saldo utilizado total, calendario de deuda, tu parte y saldos no recurrentes por mes.",
     editable: ["Se alimenta desde tus compras y quincenas", "Los MSI se reflejan en pagos futuros", "El saldo utilizado se captura desde lo que muestra el banco", "El calendario base viene del respaldo importado"],
     steps: [
       "Revisa la tarjeta Saldo utilizado TDC para saber cuanto aparece ocupado en la tarjeta.",
@@ -392,7 +392,7 @@ const guidedTourSteps: GuidedTourStep[] = [
     title: "Historial editable",
     intro: "Aqui ves lo que ya capturaste.",
     focus: "Descripcion, fecha, categoria, quincena y calendario de pago TDC.",
-    action: "Si algo esta mal, borralo y capturalo de nuevo con los datos correctos.",
+    action: "Si algo esta mal, usa Editar para corregirlo o borralo si ya no debe existir.",
     outcome: "Evitas arrastrar errores en meses futuros.",
   },
   {
@@ -1562,7 +1562,7 @@ function Dashboard({
         <MetricCard label="Ahorro actual" value={formatMoney(state.settings.currentSavings)} note={`Renta apartada: ${formatMoney(state.settings.rentReserve)}`} icon={WalletCards} />
         <MetricCard label="Tras 1a julio" value={formatMoney(periods.find((period) => period.id === "2026-07-h1")?.savings || 0)} note="Sueldo del 30 jun aplicado" icon={CalendarClock} />
         <MetricCard label="Pago TDC julio" value={formatMoney(Math.abs(periods.find((period) => period.id === "2026-07-h2")?.cardPayment || 0))} note="Estimado al 25 jul" icon={CreditCard} />
-        <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Corte + MSI" icon={CreditCard} />
+        <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Total ocupado" icon={CreditCard} />
         <MetricCard label="Cierre proyectado" value={formatMoney(periods.at(-1)?.savings || 0)} note="Noviembre 2026" icon={ChartSpline} />
       </section>
 
@@ -1979,7 +1979,7 @@ function CardView({
     <div className="grid gap-5">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Pago al corte" value={formatMoney(cardDebt.nextPayment)} note="Proximo pago programado" icon={CalendarClock} />
-        <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Corte + MSI" icon={CreditCard} />
+        <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Total ocupado" icon={CreditCard} />
         <MetricCard label="A meses / futuro" value={formatMoney(cardDebt.installmentBalance)} note="Despues del siguiente corte" icon={ChartSpline} />
         <MetricCard label="Compras TDC" value={formatMoney(cardDebt.creditPurchases)} note="Movimientos registrados" icon={WalletCards} />
       </section>
@@ -2208,7 +2208,7 @@ function SettingsView({
         <div className="mt-6 rounded-[1.4rem] border border-blue-100 bg-blue-50/50 p-4">
           <p className="eyebrow">Base de tarjeta</p>
           <p className="mt-2 text-sm text-slate-500">
-            El saldo utilizado debe coincidir con lo que muestra tu banco como credito usado. Al agregar o borrar compras TDC, este saldo se ajusta con el monto completo.
+            El saldo utilizado debe coincidir con lo que muestra tu banco como credito usado total, no solo con el corte. Al agregar o borrar compras TDC, este saldo se ajusta con el monto completo.
           </p>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <Field label="Saldo utilizado TDC"><input className="input" name="usedCreditBalance" type="number" step="0.01" defaultValue={settings.usedCreditBalance} /></Field>

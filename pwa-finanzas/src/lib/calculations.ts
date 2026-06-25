@@ -59,6 +59,19 @@ function legacyPurchaseCoverage(settings: AppState["settings"]): number {
   return positiveAmount(baseSettingsBalance(settings) - openingCardBalance(settings));
 }
 
+function isStaleSeededUsedBalance(
+  settings: AppState["settings"],
+  currentUsedBalance: number,
+  autoUsedBalance: number,
+): boolean {
+  if (currentUsedBalance <= 0 || autoUsedBalance <= currentUsedBalance) return false;
+  return (
+    almostEqual(currentUsedBalance, baseSettingsBalance(settings)) ||
+    almostEqual(currentUsedBalance, duplicatedLegacyBalance(settings)) ||
+    almostEqual(currentUsedBalance, positiveAmount(settings.nonRecurringBalance))
+  );
+}
+
 function localId(prefix: string, index: number): string {
   return globalThis.crypto?.randomUUID?.() || `${prefix}-${Date.now()}-${index}`;
 }
@@ -384,7 +397,7 @@ export function normalizeState(input?: Partial<AppState> | null): AppState {
   const shouldSeedUsedBalance =
     !("usedCreditBalance" in inputSettings) ||
     (currentUsedBalance === 0 && autoUsedBalance > 0) ||
-    (autoUsedBalance > 0 && almostEqual(currentUsedBalance, duplicatedLegacyBalance(settings)));
+    isStaleSeededUsedBalance(settings, currentUsedBalance, autoUsedBalance);
 
   if (shouldSeedUsedBalance) {
     normalized.settings.usedCreditBalance = autoUsedBalance;
@@ -462,9 +475,11 @@ export function calculateCardDebtFor(
   const usedCreditBalance = positiveAmount(inputState.settings.usedCreditBalance);
   const nextPayment = periods.map(unpaidCardPaymentFor).find((payment) => payment > 0) || 0;
   const calculatedBalance = calculatedUsedCreditBalance(inputState, periods);
+  const trackedBalance = isStaleSeededUsedBalance(inputState.settings, usedCreditBalance, calculatedBalance)
+    ? calculatedBalance
+    : usedCreditBalance || calculatedBalance;
   const totalDebt =
-    usedCreditBalance ||
-    calculatedBalance ||
+    trackedBalance ||
     Math.max(scheduledFromTransactions, calendarBalance, nextPayment);
 
   return {
@@ -472,7 +487,7 @@ export function calculateCardDebtFor(
     installmentBalance: positiveAmount(totalDebt - nextPayment),
     scheduledPayments,
     calendarBalance,
-    settingsBalance: usedCreditBalance || calculatedBalance || settingsBalance,
+    settingsBalance: trackedBalance || settingsBalance,
     creditPurchases,
     totalDebt,
   };
@@ -537,12 +552,20 @@ export function applyTransactionToState(inputState: AppState, transaction: Trans
   const amount = positiveAmount(transaction.amount);
 
   if (transaction.method === "credit") {
-    const currentBalance = positiveAmount(settings.usedCreditBalance) || baseSettingsBalance(settings);
+    const autoBalance = calculatedUsedCreditBalance(inputState);
+    const storedBalance = positiveAmount(settings.usedCreditBalance);
+    const currentBalance = isStaleSeededUsedBalance(settings, storedBalance, autoBalance)
+      ? autoBalance
+      : storedBalance || autoBalance || baseSettingsBalance(settings);
     settings.usedCreditBalance = positiveAmount(currentBalance + direction * amount);
   }
 
   if (transaction.method === "card_payment") {
-    const currentBalance = positiveAmount(settings.usedCreditBalance) || calculatedUsedCreditBalance(inputState);
+    const autoBalance = calculatedUsedCreditBalance(inputState);
+    const storedBalance = positiveAmount(settings.usedCreditBalance);
+    const currentBalance = isStaleSeededUsedBalance(settings, storedBalance, autoBalance)
+      ? autoBalance
+      : storedBalance || autoBalance;
     settings.usedCreditBalance = positiveAmount(currentBalance - direction * amount);
   }
 
