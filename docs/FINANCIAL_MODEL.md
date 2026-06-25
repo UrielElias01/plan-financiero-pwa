@@ -77,6 +77,18 @@ Reglas:
 - Si se marca como compartido, se agrega `partnerIncome` por la mitad para reflejar que la pareja aporta esa parte.
 - Al borrar la compra, se revierte el cargo quincenal, el calendario de pagos y el aumento de `usedCreditBalance`.
 
+### Pago TDC aplicado
+
+Un movimiento con metodo `card_payment` representa un pago real a la tarjeta.
+
+Reglas:
+
+- Resta el monto completo de `usedCreditBalance`.
+- No modifica los cargos de compra ni los MSI; solo indica que ya bajaste el saldo usado con un pago.
+- En la pantalla `Tarjeta`, los pagos programados se pueden marcar como aplicados.
+- El siguiente `Pago al corte` ignora pagos ya registrados y muestra el siguiente pendiente.
+- Al borrar el movimiento de pago, el saldo usado vuelve a subir por ese monto.
+
 ## Recurrentes
 
 Los recurrentes activos se proyectan en la quincena que corresponde a su dia:
@@ -102,19 +114,20 @@ Componentes:
 
 - `calendarBalance`: suma de saldos no recurrentes (`debt`) desde `cardCalendar`; no suma los totales mensuales completos.
 - `usedCreditBalance`: saldo utilizado real capturado en Ajustes.
-- `settingsBalance`: respaldo legacy calculado como `previousCardDebt - previousCardPayment - pointsPayment + newJulyPurchases + nonRecurringBalance`.
+- `settingsBalance`: respaldo legacy sin doble conteo. Usa `previousCardDebt - previousCardPayment - pointsPayment + newJulyPurchases`, comparado contra `nonRecurringBalance` cuando ese campo ya representa el total.
 - `scheduledPayments`: suma de pagos TDC pendientes en quincenas.
 - `scheduledFromTransactions`: suma de pagos pendientes generados por movimientos de tarjeta.
 - `creditPurchases`: compras de credito registradas en Movimientos; se muestra como referencia, pero no se suma encima si ya esta calendarizada.
+- `card_payment`: pagos reales aplicados a la tarjeta; bajan `usedCreditBalance`.
 
 Formula:
 
 ```text
-totalDebt = usedCreditBalance || settingsBalance || comprasTdcHastaHoy || max(scheduledFromTransactions, calendarBalance, nextPayment)
+totalDebt = usedCreditBalance || saldoCalculadoSinDuplicar || max(scheduledFromTransactions, calendarBalance, nextPayment)
 installmentBalance = max(totalDebt - nextPayment, 0)
 ```
 
-Esto evita inflar el saldo sumando meses futuros completos del calendario o historial viejo ya pagado. El numero confiable es `usedCreditBalance`; cuando agregas o borras compras TDC desde la app, ese saldo se mueve con la compra.
+Esto evita inflar el saldo sumando meses futuros completos del calendario o historial viejo ya pagado. El numero confiable es `usedCreditBalance`; cuando agregas o borras compras TDC desde la app, ese saldo sube o baja con la compra. Cuando registras un pago TDC aplicado, baja por el monto pagado.
 
 ## Reportes
 

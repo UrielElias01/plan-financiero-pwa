@@ -51,7 +51,7 @@ export type Transaction = {
   description: string;
   amount: number;
   category: string;
-  method: "credit" | "cash";
+  method: "credit" | "cash" | "card_payment";
   periodId: string;
   shared: boolean;
   installments: number;

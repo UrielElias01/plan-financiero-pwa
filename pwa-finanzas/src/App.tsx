@@ -571,6 +571,12 @@ function getPeriodLabel(periods: Period[], id: string): string {
   return periods.find((period) => period.id === id)?.label || "Sin quincena";
 }
 
+function transactionMethodLabel(method: Transaction["method"]): string {
+  if (method === "credit") return "Tarjeta de credito";
+  if (method === "card_payment") return "Pago TDC aplicado";
+  return "Efectivo / debito";
+}
+
 function MetricCard({
   label,
   value,
@@ -891,16 +897,19 @@ export function App() {
   async function submitTransaction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
+    const methodField = getField(form, "method");
+    const method: Transaction["method"] =
+      methodField === "card_payment" ? "card_payment" : methodField === "credit" ? "credit" : "cash";
     const transactionBase: Transaction = {
       id: crypto.randomUUID(),
       date: getField(form, "date") || today,
       description: getField(form, "description"),
       amount: asNumber(getField(form, "amount")),
       category: getField(form, "category"),
-      method: getField(form, "method") === "credit" ? "credit" : "cash",
+      method,
       periodId: getField(form, "periodId"),
-      shared: Boolean(new FormData(form).get("shared")),
-      installments: asNumber(getField(form, "installments"), 1),
+      shared: method !== "card_payment" && Boolean(new FormData(form).get("shared")),
+      installments: method === "credit" ? asNumber(getField(form, "installments"), 1) : 1,
     };
     const transaction = {
       ...transactionBase,
@@ -939,6 +948,55 @@ export function App() {
         -1,
       ),
       "Movimiento borrado",
+    );
+  }
+
+  async function registerCardPayment(period: CalculatedPeriod) {
+    const amount = Math.max(0, asNumber(-period.cardPayment));
+    if (amount <= 0) {
+      showToast("Esta quincena no tiene pago TDC pendiente", "danger");
+      return;
+    }
+
+    const paidAmount = state.transactions
+      .filter((transaction) => transaction.method === "card_payment" && transaction.periodId === period.id)
+      .reduce((total, transaction) => total + asNumber(transaction.amount), 0);
+    const pendingAmount = Math.max(0, amount - paidAmount);
+    if (pendingAmount <= 0) {
+      showToast("Ese pago TDC ya estaba registrado");
+      return;
+    }
+
+    const confirmed = await confirmAction({
+      title: "Registrar pago TDC",
+      message: `Se restaran ${formatMoney(pendingAmount)} del saldo utilizado de la tarjeta para ${period.label}.`,
+      confirmText: "Registrar pago",
+    });
+    if (!confirmed) return;
+
+    const transaction: Transaction = {
+      id: crypto.randomUUID(),
+      date: today,
+      description: `Pago TDC ${period.label}`,
+      amount: pendingAmount,
+      category: "Pago TDC",
+      method: "card_payment",
+      periodId: period.id,
+      shared: false,
+      installments: 1,
+      paymentSchedule: [],
+    };
+
+    await commit(
+      applyTransactionToState(
+        {
+          ...state,
+          transactions: [...state.transactions, transaction],
+        },
+        transaction,
+        1,
+      ),
+      "Pago TDC registrado",
     );
   }
 
@@ -1284,7 +1342,7 @@ export function App() {
                 onDelete={deleteRecurring}
               />
             ) : null}
-            {view === "card" ? <CardView state={state} cardDebt={cardDebt} /> : null}
+            {view === "card" ? <CardView state={state} periods={periods} cardDebt={cardDebt} onRegisterPayment={registerCardPayment} /> : null}
             {view === "reports" ? (
               <ReportsView monthly={monthly} chartData={chartData} onExportJson={() => exportStateJson(state, today)} onExportCsv={() => exportMonthlyCsv(monthly, today)} onImport={importJson} />
             ) : null}
@@ -1645,6 +1703,7 @@ function TransactionsView({
               <select className="input" name="method" defaultValue="credit">
                 <option value="credit">Tarjeta de credito</option>
                 <option value="cash">Efectivo / debito</option>
+                <option value="card_payment">Pago TDC aplicado</option>
               </select>
             </Field>
           </div>
@@ -1696,7 +1755,7 @@ function TransactionsView({
                       {transaction.date} | {transaction.category} | {getPeriodLabel(state.periods, transaction.periodId)}
                     </p>
                     <p className="text-sm text-slate-500">
-                      {transaction.method === "credit" ? "Tarjeta de credito" : "Efectivo / debito"}
+                      {transactionMethodLabel(transaction.method)}
                       {transaction.shared ? " | dividido con pareja" : ""}
                     </p>
                     {schedule ? <p className="text-xs text-slate-500">Pago TDC: {schedule}</p> : null}
@@ -1817,8 +1876,37 @@ function RecurringView({
   );
 }
 
-function CardView({ state, cardDebt }: { state: AppState; cardDebt: CardDebtSummary }) {
+function CardView({
+  state,
+  periods,
+  cardDebt,
+  onRegisterPayment,
+}: {
+  state: AppState;
+  periods: CalculatedPeriod[];
+  cardDebt: CardDebtSummary;
+  onRegisterPayment: (period: CalculatedPeriod) => void;
+}) {
   const data = state.cardCalendar.map((entry) => ({ month: entry.month, total: entry.total, tuParte: entry.userPart, deuda: entry.debt }));
+  const paidByPeriod = state.transactions
+    .filter((transaction) => transaction.method === "card_payment")
+    .reduce<Map<string, number>>((paid, transaction) => {
+      paid.set(transaction.periodId, (paid.get(transaction.periodId) || 0) + asNumber(transaction.amount));
+      return paid;
+    }, new Map());
+  const paymentRows = periods
+    .map((period) => {
+      const planned = Math.max(0, -period.cardPayment);
+      const paid = paidByPeriod.get(period.id) || 0;
+      return {
+        period,
+        planned,
+        paid,
+        pending: Math.max(0, planned - paid),
+      };
+    })
+    .filter((entry) => entry.planned > 0);
+
   return (
     <div className="grid gap-5">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1826,6 +1914,47 @@ function CardView({ state, cardDebt }: { state: AppState; cardDebt: CardDebtSumm
         <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Corte + MSI" icon={CreditCard} />
         <MetricCard label="A meses / futuro" value={formatMoney(cardDebt.installmentBalance)} note="Despues del siguiente corte" icon={ChartSpline} />
         <MetricCard label="Compras TDC" value={formatMoney(cardDebt.creditPurchases)} note="Movimientos registrados" icon={WalletCards} />
+      </section>
+
+      <section className="panel" data-tour="card-payment">
+        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="eyebrow">Pagos aplicados</p>
+            <h3 className="text-2xl font-black text-navy">Marcar pago de tarjeta</h3>
+            <p className="mt-2 text-sm text-slate-500">
+              Cuando registres un pago, baja el saldo utilizado TDC. Si borras el movimiento de pago, se revierte.
+            </p>
+          </div>
+        </div>
+        {paymentRows.length ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {paymentRows.map(({ period, planned, paid, pending }) => (
+              <article key={period.id} className="rounded-3xl border border-blue-100 bg-white/75 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <strong className="text-navy">{period.label}</strong>
+                    <p className="mt-1 text-sm text-slate-500">Pago planeado: {formatMoney(planned)}</p>
+                    <p className="text-sm text-slate-500">Ya registrado: {formatMoney(paid)}</p>
+                  </div>
+                  <span className={`pill shrink-0 ${pending <= 0 ? "money-positive" : "money-negative"}`}>
+                    {pending <= 0 ? "Pagado" : formatMoney(pending)}
+                  </span>
+                </div>
+                <button
+                  className="button-primary mt-4 w-full disabled:cursor-not-allowed disabled:opacity-60"
+                  type="button"
+                  disabled={pending <= 0}
+                  onClick={() => onRegisterPayment(period)}
+                >
+                  <Check size={18} />
+                  {pending <= 0 ? "Pago registrado" : "Marcar como pagado"}
+                </button>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="Sin pagos TDC programados" text="Cuando una quincena tenga pago de tarjeta, aparecera aqui para marcarlo como aplicado." />
+        )}
       </section>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,.8fr)]">

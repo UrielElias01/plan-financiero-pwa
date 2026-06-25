@@ -36,14 +36,27 @@ function positiveAmount(value: unknown): number {
   return Math.max(0, asNumber(value));
 }
 
+function almostEqual(left: number, right: number): boolean {
+  return Math.abs(left - right) < 0.01;
+}
+
+function openingCardBalance(settings: AppState["settings"]): number {
+  return positiveAmount(settings.previousCardDebt - settings.previousCardPayment - settings.pointsPayment);
+}
+
 function baseSettingsBalance(settings: AppState["settings"]): number {
-  return positiveAmount(
-    settings.previousCardDebt -
-      settings.previousCardPayment -
-      settings.pointsPayment +
-      settings.newJulyPurchases +
-      settings.nonRecurringBalance,
+  return Math.max(
+    openingCardBalance(settings) + positiveAmount(settings.newJulyPurchases),
+    positiveAmount(settings.nonRecurringBalance),
   );
+}
+
+function duplicatedLegacyBalance(settings: AppState["settings"]): number {
+  return positiveAmount(openingCardBalance(settings) + settings.newJulyPurchases + settings.nonRecurringBalance);
+}
+
+function legacyPurchaseCoverage(settings: AppState["settings"]): number {
+  return positiveAmount(baseSettingsBalance(settings) - openingCardBalance(settings));
 }
 
 function localId(prefix: string, index: number): string {
@@ -198,12 +211,72 @@ function buildRecurringEffects(inputState: AppState): Map<string, RecurringEffec
   return effects;
 }
 
-function recurringCreditChargesThrough(inputState: AppState, asOf = defaultToday): number {
-  return sum(inputState.periods, (period) => {
-    const totals = recurringTotalsForPeriod(inputState, period);
-    if (!totals.firstCreditDate || totals.firstCreditDate > asOf) return 0;
-    return positiveAmount(totals.credit - positiveAmount(period.chatGptCredit));
+function periodStartDate(period: Period): string | null {
+  const parts = periodDateParts(period);
+  if (!parts) return null;
+  return dateForDay(parts.year, parts.month, parts.half === 1 ? 1 : 16);
+}
+
+function creditTransactionsThrough(inputState: AppState, asOf = defaultToday): Transaction[] {
+  return inputState.transactions.filter(
+    (transaction) => transaction.method === "credit" && (!transaction.date || transaction.date <= asOf),
+  );
+}
+
+function cardPaymentTransactionsThrough(inputState: AppState, asOf = defaultToday): Transaction[] {
+  return inputState.transactions.filter(
+    (transaction) => transaction.method === "card_payment" && (!transaction.date || transaction.date <= asOf),
+  );
+}
+
+function cardPaymentsByPeriod(inputState: AppState, asOf = defaultToday): Map<string, number> {
+  const paid = new Map<string, number>();
+  for (const transaction of cardPaymentTransactionsThrough(inputState, asOf)) {
+    paid.set(transaction.periodId, (paid.get(transaction.periodId) || 0) + positiveAmount(transaction.amount));
+  }
+  return paid;
+}
+
+function creditActivityThrough(
+  inputState: AppState,
+  periods: Array<Period | CalculatedPeriod>,
+  asOf = defaultToday,
+): number {
+  const transactions = creditTransactionsThrough(inputState, asOf);
+  const transactionTotal = sum(transactions, (transaction) => positiveAmount(transaction.amount));
+  const transactionsByPeriod = new Map<string, number>();
+  for (const transaction of transactions) {
+    transactionsByPeriod.set(
+      transaction.periodId,
+      (transactionsByPeriod.get(transaction.periodId) || 0) + positiveAmount(transaction.amount),
+    );
+  }
+
+  const unrecordedPeriodCharges = sum(periods, (period) => {
+    const startDate = periodStartDate(period);
+    if (!startDate || startDate > asOf) return 0;
+    const periodCreditCharges =
+      "creditCharges" in period
+        ? positiveAmount(period.creditCharges)
+        : positiveAmount(period.foodCredit) + positiveAmount(period.chatGptCredit);
+    return positiveAmount(periodCreditCharges - (transactionsByPeriod.get(period.id) || 0));
   });
+
+  return transactionTotal + unrecordedPeriodCharges;
+}
+
+function calculatedUsedCreditBalance(
+  inputState: AppState,
+  periods: Array<Period | CalculatedPeriod> = inputState.periods,
+  asOf = defaultToday,
+): number {
+  const settingsBase = baseSettingsBalance(inputState.settings);
+  const activity = creditActivityThrough(inputState, periods, asOf);
+  const uncoveredActivity = positiveAmount(activity - legacyPurchaseCoverage(inputState.settings));
+  const cardPayments = sum(cardPaymentTransactionsThrough(inputState, asOf), (transaction) =>
+    positiveAmount(transaction.amount),
+  );
+  return positiveAmount(settingsBase + uncoveredActivity - cardPayments);
 }
 
 function normalizeRecurringItems(input: unknown): AppState["recurring"] {
@@ -225,12 +298,7 @@ function normalizeRecurringItems(input: unknown): AppState["recurring"] {
 export function normalizeState(input?: Partial<AppState> | null): AppState {
   const inputSettings = input?.settings || {};
   const settings = { ...seedState.settings, ...inputSettings };
-  const legacyBalance = baseSettingsBalance(settings);
-  if (!("usedCreditBalance" in inputSettings) || (positiveAmount(settings.usedCreditBalance) === 0 && legacyBalance > 0)) {
-    settings.usedCreditBalance = legacyBalance;
-  }
-
-  return {
+  const normalized = {
     ...structuredClone(seedState),
     ...input,
     settings,
@@ -242,6 +310,19 @@ export function normalizeState(input?: Partial<AppState> | null): AppState {
       : structuredClone(seedState.cardCalendar),
     sync: { ...seedState.sync, ...(input?.sync || {}) },
   } as AppState;
+
+  const autoUsedBalance = calculatedUsedCreditBalance(normalized, calculatePeriodsFor(normalized));
+  const currentUsedBalance = positiveAmount(settings.usedCreditBalance);
+  const shouldSeedUsedBalance =
+    !("usedCreditBalance" in inputSettings) ||
+    (currentUsedBalance === 0 && autoUsedBalance > 0) ||
+    (autoUsedBalance > 0 && almostEqual(currentUsedBalance, duplicatedLegacyBalance(settings)));
+
+  if (shouldSeedUsedBalance) {
+    normalized.settings.usedCreditBalance = autoUsedBalance;
+  }
+
+  return normalized;
 }
 
 export function calculatePeriodsFor(inputState: AppState): CalculatedPeriod[] {
@@ -302,18 +383,17 @@ export function calculateCardDebtFor(
   periods: CalculatedPeriod[] = calculatePeriodsFor(inputState),
 ): CardDebtSummary {
   const creditTransactions = inputState.transactions.filter((transaction) => transaction.method === "credit");
-  const scheduledPayments = sum(periods, (period) => positiveAmount(-period.cardPayment));
+  const paidByPeriod = cardPaymentsByPeriod(inputState);
+  const unpaidCardPaymentFor = (period: CalculatedPeriod) =>
+    positiveAmount(positiveAmount(-period.cardPayment) - (paidByPeriod.get(period.id) || 0));
+  const scheduledPayments = sum(periods, unpaidCardPaymentFor);
   const scheduledFromTransactions = sum(creditTransactions, scheduledAmountFor);
   const creditPurchases = sum(creditTransactions, (transaction) => positiveAmount(transaction.amount));
-  const creditPurchasesToDate = sum(creditTransactions, (transaction) =>
-    !transaction.date || transaction.date <= defaultToday ? positiveAmount(transaction.amount) : 0,
-  );
-  const recurringPurchasesToDate = recurringCreditChargesThrough(inputState);
   const calendarBalance = sum(inputState.cardCalendar, (entry) => positiveAmount(entry.debt));
   const settingsBalance = baseSettingsBalance(inputState.settings);
   const usedCreditBalance = positiveAmount(inputState.settings.usedCreditBalance);
-  const nextPayment = positiveAmount(-(periods.find((period) => period.cardPayment < 0)?.cardPayment || 0));
-  const calculatedBalance = settingsBalance || creditPurchasesToDate + recurringPurchasesToDate;
+  const nextPayment = periods.map(unpaidCardPaymentFor).find((payment) => payment > 0) || 0;
+  const calculatedBalance = calculatedUsedCreditBalance(inputState, periods);
   const totalDebt =
     usedCreditBalance ||
     calculatedBalance ||
@@ -324,7 +404,7 @@ export function calculateCardDebtFor(
     installmentBalance: positiveAmount(totalDebt - nextPayment),
     scheduledPayments,
     calendarBalance,
-    settingsBalance: usedCreditBalance || settingsBalance || recurringPurchasesToDate,
+    settingsBalance: usedCreditBalance || calculatedBalance || settingsBalance,
     creditPurchases,
     totalDebt,
   };
@@ -363,7 +443,7 @@ export function applyTransactionToPeriods(periods: Period[], transaction: Transa
   if (!period) return next;
 
   const amount = asNumber(transaction.amount);
-  const sharedIncome = transaction.shared ? amount / 2 : 0;
+  const sharedIncome = transaction.method !== "card_payment" && transaction.shared ? amount / 2 : 0;
   const creditPayment = transaction.method === "credit" ? 0 : -amount;
 
   if (transaction.method === "credit") {
@@ -373,7 +453,7 @@ export function applyTransactionToPeriods(periods: Period[], transaction: Transa
       const paymentPeriod = next.find((entry) => entry.id === payment.periodId);
       if (paymentPeriod) paymentPeriod.cardPayment -= direction * payment.amount;
     }
-  } else {
+  } else if (transaction.method === "cash") {
     period.debitServices += direction * creditPayment;
   }
 
@@ -389,6 +469,11 @@ export function applyTransactionToState(inputState: AppState, transaction: Trans
   if (transaction.method === "credit") {
     const currentBalance = positiveAmount(settings.usedCreditBalance) || baseSettingsBalance(settings);
     settings.usedCreditBalance = positiveAmount(currentBalance + direction * amount);
+  }
+
+  if (transaction.method === "card_payment") {
+    const currentBalance = positiveAmount(settings.usedCreditBalance) || calculatedUsedCreditBalance(inputState);
+    settings.usedCreditBalance = positiveAmount(currentBalance - direction * amount);
   }
 
   if (transaction.method === "cash" && selectedIndex === 0) {
