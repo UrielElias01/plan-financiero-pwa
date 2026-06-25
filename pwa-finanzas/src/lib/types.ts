@@ -56,6 +56,9 @@ export type Transaction = {
   shared: boolean;
   installments: number;
   paymentSchedule?: PaymentScheduleItem[];
+  sourceRecurringId?: string;
+  recurringDate?: string;
+  skipPlanImpact?: boolean;
 };
 
 export type CardCalendarEntry = {
@@ -89,6 +92,7 @@ export type AppState = {
   transactions: Transaction[];
   cardCalendar: CardCalendarEntry[];
   sync: SyncSettings;
+  recurringLastAppliedDate?: string;
 };
 
 export type CalculatedPeriod = Period & {

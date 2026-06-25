@@ -125,6 +125,12 @@ function dateForDay(year: number, month: number, day: number): string {
   return `${year}-${padDatePart(month)}-${padDatePart(safeDay)}`;
 }
 
+function addDays(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map((part) => asNumber(part));
+  const next = new Date(Date.UTC(year, month - 1, day + days));
+  return `${next.getUTCFullYear()}-${padDatePart(next.getUTCMonth() + 1)}-${padDatePart(next.getUTCDate())}`;
+}
+
 function recurringHalf(day: number): 1 | 2 {
   return day <= 15 ? 1 : 2;
 }
@@ -295,6 +301,68 @@ function normalizeRecurringItems(input: unknown): AppState["recurring"] {
   });
 }
 
+export function materializeDueRecurringTransactions(
+  inputState: AppState,
+  asOf = defaultToday,
+): { state: AppState; added: Transaction[] } {
+  const since = inputState.recurringLastAppliedDate || addDays(asOf, -1);
+  const added: Transaction[] = [];
+  let nextState: AppState = {
+    ...inputState,
+    transactions: [...inputState.transactions],
+    recurringLastAppliedDate: asOf,
+  };
+  const existingKeys = new Set(
+    inputState.transactions
+      .filter((transaction) => transaction.sourceRecurringId && transaction.recurringDate)
+      .map((transaction) => `${transaction.sourceRecurringId}:${transaction.recurringDate}`),
+  );
+
+  for (const item of inputState.recurring) {
+    if (!item.active || positiveAmount(item.amount) <= 0) continue;
+
+    for (const period of inputState.periods) {
+      const recurringDate = recurringDateForPeriod(period, item);
+      if (!recurringDate || recurringDate <= since || recurringDate > asOf) continue;
+
+      const key = `${item.id}:${recurringDate}`;
+      if (existingKeys.has(key)) continue;
+
+      const transactionBase: Transaction = {
+        id: localId("recurring-transaction", added.length),
+        date: recurringDate,
+        description: item.name,
+        amount: positiveAmount(item.amount),
+        category: "Recurrente",
+        method: item.method === "credit" ? "credit" : "cash",
+        periodId: period.id,
+        shared: false,
+        installments: 1,
+        sourceRecurringId: item.id,
+        recurringDate,
+        skipPlanImpact: true,
+      };
+      const transaction = {
+        ...transactionBase,
+        paymentSchedule: buildPaymentScheduleFor(nextState, transactionBase),
+      };
+
+      nextState = applyTransactionToState(
+        {
+          ...nextState,
+          transactions: [...nextState.transactions, transaction],
+        },
+        transaction,
+        1,
+      );
+      existingKeys.add(key);
+      added.push(transaction);
+    }
+  }
+
+  return { state: nextState, added };
+}
+
 export function normalizeState(input?: Partial<AppState> | null): AppState {
   const inputSettings = input?.settings || {};
   const settings = { ...seedState.settings, ...inputSettings };
@@ -438,6 +506,8 @@ export function buildPaymentScheduleFor(inputState: AppState, transaction: Trans
 }
 
 export function applyTransactionToPeriods(periods: Period[], transaction: Transaction, direction = 1): Period[] {
+  if (transaction.skipPlanImpact) return periods;
+
   const next = periods.map((period) => ({ ...period }));
   const period = next.find((entry) => entry.id === transaction.periodId);
   if (!period) return next;
@@ -476,7 +546,7 @@ export function applyTransactionToState(inputState: AppState, transaction: Trans
     settings.usedCreditBalance = positiveAmount(currentBalance - direction * amount);
   }
 
-  if (transaction.method === "cash" && selectedIndex === 0) {
+  if (transaction.method === "cash" && !transaction.skipPlanImpact && selectedIndex === 0) {
     const userShare = transaction.shared ? amount / 2 : amount;
     settings.currentSavings -= direction * userShare;
   }

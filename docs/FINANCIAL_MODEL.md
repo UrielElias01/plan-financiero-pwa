@@ -75,6 +75,7 @@ Reglas:
 - Una exhibicion cae en la siguiente segunda quincena disponible.
 - 3 MSI o 6 MSI reparten el total entre las siguientes segundas quincenas disponibles.
 - Si se marca como compartido, se agrega `partnerIncome` por la mitad para reflejar que la pareja aporta esa parte.
+- Al editar la compra, primero se revierte el movimiento anterior y luego se aplica el nuevo. Asi el saldo usado solo cambia por la diferencia real.
 - Al borrar la compra, se revierte el cargo quincenal, el calendario de pagos y el aumento de `usedCreditBalance`.
 
 ### Pago TDC aplicado
@@ -98,6 +99,9 @@ Los recurrentes activos se proyectan en la quincena que corresponde a su dia:
 - Si el mes no tiene ese dia, se usa el ultimo dia del mes.
 - Los recurrentes de debito solo se agregan si `debitServices` no cubre ya ese monto.
 - Los recurrentes de credito solo se agregan si `chatGptCredit` no cubre ya ese monto.
+- Al abrir la app, los recurrentes vencidos desde la ultima revision se materializan como movimientos reales.
+- Si no existe una revision previa, solo se revisa el dia actual para evitar meter historial viejo de golpe.
+- Los recurrentes materializados no vuelven a modificar la quincena si ya estaba proyectada; los de tarjeta si suben `usedCreditBalance`.
 
 Esta regla evita duplicar respaldos antiguos donde las suscripciones ya estaban capturadas manualmente en las quincenas.
 

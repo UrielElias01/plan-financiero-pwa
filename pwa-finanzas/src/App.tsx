@@ -51,6 +51,7 @@ import {
   calculateMonthlyFor,
   calculatePeriodsFor,
   formatMoney,
+  materializeDueRecurringTransactions,
   normalizeState,
   signedTone,
 } from "./lib/calculations";
@@ -667,6 +668,7 @@ export function App() {
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);
   const [periodDraft, setPeriodDraft] = useState<Period | null>(null);
+  const [transactionDraft, setTransactionDraft] = useState<Transaction | null>(null);
   const [recurringDraft, setRecurringDraft] = useState(emptyRecurring);
   const [recurringDraftIndex, setRecurringDraftIndex] = useState<number | null>(null);
   const [syncDraft, setSyncDraft] = useState(cloneSeed().sync);
@@ -686,9 +688,28 @@ export function App() {
 
   useEffect(() => {
     loadState()
-      .then((loaded) => {
-        setState(loaded);
-        setSyncDraft(loaded.sync);
+      .then(async (loaded) => {
+        const recurringResult = materializeDueRecurringTransactions(loaded, today);
+        if (
+          recurringResult.added.length ||
+          recurringResult.state.recurringLastAppliedDate !== loaded.recurringLastAppliedDate
+        ) {
+          await saveState(recurringResult.state);
+        }
+        setState(recurringResult.state);
+        setSyncDraft(recurringResult.state.sync);
+        if (recurringResult.added.length) {
+          const names = recurringResult.added.map((transaction) => transaction.description).join(", ");
+          window.setTimeout(
+            () =>
+              showToast(
+                recurringResult.added.length === 1
+                  ? `Pago recurrente agregado: ${names}`
+                  : `Pagos recurrentes agregados: ${names}`,
+              ),
+            0,
+          );
+        }
       })
       .finally(() => setReady(true));
     registerServiceWorker().catch(console.error);
@@ -901,7 +922,7 @@ export function App() {
     const method: Transaction["method"] =
       methodField === "card_payment" ? "card_payment" : methodField === "credit" ? "credit" : "cash";
     const transactionBase: Transaction = {
-      id: crypto.randomUUID(),
+      id: transactionDraft?.id || crypto.randomUUID(),
       date: getField(form, "date") || today,
       description: getField(form, "description"),
       amount: asNumber(getField(form, "amount")),
@@ -910,24 +931,48 @@ export function App() {
       periodId: getField(form, "periodId"),
       shared: method !== "card_payment" && Boolean(new FormData(form).get("shared")),
       installments: method === "credit" ? asNumber(getField(form, "installments"), 1) : 1,
+      sourceRecurringId: transactionDraft?.sourceRecurringId,
+      recurringDate: transactionDraft?.recurringDate,
+      skipPlanImpact: transactionDraft?.skipPlanImpact,
     };
+    const baseState = transactionDraft
+      ? applyTransactionToState(
+          {
+            ...state,
+            transactions: state.transactions.filter((entry) => entry.id !== transactionDraft.id),
+          },
+          transactionDraft,
+          -1,
+        )
+      : state;
     const transaction = {
       ...transactionBase,
-      paymentSchedule: buildPaymentScheduleFor(state, transactionBase),
+      paymentSchedule: buildPaymentScheduleFor(baseState, transactionBase),
     };
     await commit(
       applyTransactionToState(
         {
-          ...state,
-          transactions: [...state.transactions, transaction],
+          ...baseState,
+          transactions: [...baseState.transactions, transaction],
         },
         transaction,
         1,
       ),
-      "Movimiento agregado",
+      transactionDraft ? "Movimiento actualizado" : "Movimiento agregado",
     );
+    setTransactionDraft(null);
     form.reset();
     (form.elements.namedItem("date") as HTMLInputElement).value = today;
+  }
+
+  function editTransaction(transaction: Transaction) {
+    setTransactionDraft({ ...transaction });
+    setView("transactions");
+    window.setTimeout(() => document.querySelector<HTMLElement>('[data-tour="transactions-form"]')?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
+  }
+
+  function clearTransactionDraft() {
+    setTransactionDraft(null);
   }
 
   async function deleteTransaction(transaction: Transaction) {
@@ -949,6 +994,7 @@ export function App() {
       ),
       "Movimiento borrado",
     );
+    if (transactionDraft?.id === transaction.id) clearTransactionDraft();
   }
 
   async function registerCardPayment(period: CalculatedPeriod) {
@@ -1327,8 +1373,11 @@ export function App() {
             {view === "transactions" ? (
               <TransactionsView
                 state={state}
+                draft={transactionDraft}
                 onSubmit={submitTransaction}
+                onEdit={editTransaction}
                 onDelete={deleteTransaction}
+                onClearDraft={clearTransactionDraft}
               />
             ) : null}
             {view === "recurring" ? (
@@ -1663,44 +1712,52 @@ function PeriodsView({ periods, onEdit, onAdd }: { periods: CalculatedPeriod[]; 
 
 function TransactionsView({
   state,
+  draft,
   onSubmit,
+  onEdit,
   onDelete,
+  onClearDraft,
 }: {
   state: AppState;
+  draft: Transaction | null;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onEdit: (transaction: Transaction) => void;
   onDelete: (transaction: Transaction) => void;
+  onClearDraft: () => void;
 }) {
   const transactions = [...state.transactions].reverse();
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(320px,.75fr)_minmax(0,1.25fr)]">
-      <form className="panel self-start" onSubmit={onSubmit} data-tour="transactions-form">
+      <form key={draft?.id || "new-transaction"} className="panel self-start" onSubmit={onSubmit} data-tour="transactions-form">
         <p className="eyebrow">Nuevo</p>
-        <h3 className="mb-5 text-2xl font-black text-navy">Movimiento</h3>
+        <h3 className="mb-5 text-2xl font-black text-navy">{draft ? "Editar movimiento" : "Movimiento"}</h3>
         <Field label="Nombre">
-          <input className="input" name="description" required placeholder="Ej. Farmacia, mandado, gasolina" />
+          <input className="input" name="description" required placeholder="Ej. Farmacia, mandado, gasolina" defaultValue={draft?.description || ""} />
         </Field>
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Monto">
-            <input className="input" name="amount" type="number" step="0.01" min="0" required />
+            <input className="input" name="amount" type="number" step="0.01" min="0" required defaultValue={draft?.amount ?? ""} />
           </Field>
           <Field label="Fecha">
-            <input className="input" name="date" type="date" required defaultValue={today} />
+            <input className="input" name="date" type="date" required defaultValue={draft?.date || today} />
           </Field>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Categoria">
-            <select className="input" name="category" defaultValue="Comida">
+            <select className="input" name="category" defaultValue={draft?.category || "Comida"}>
               <option>Comida</option>
               <option>Tarjeta</option>
               <option>Servicio</option>
               <option>Renta</option>
               <option>Ingreso</option>
+              <option>Pago TDC</option>
+              <option>Recurrente</option>
               <option>Otro</option>
             </select>
           </Field>
           <div data-tour="transactions-method">
             <Field label="Medio">
-              <select className="input" name="method" defaultValue="credit">
+              <select className="input" name="method" defaultValue={draft?.method || "credit"}>
                 <option value="credit">Tarjeta de credito</option>
                 <option value="cash">Efectivo / debito</option>
                 <option value="card_payment">Pago TDC aplicado</option>
@@ -1709,7 +1766,7 @@ function TransactionsView({
           </div>
         </div>
         <Field label="Quincena">
-          <select className="input" name="periodId" defaultValue={state.periods[0]?.id}>
+          <select className="input" name="periodId" defaultValue={draft?.periodId || state.periods[0]?.id}>
             {state.periods.map((period) => (
               <option key={period.id} value={period.id}>
                 {period.label}
@@ -1718,22 +1775,30 @@ function TransactionsView({
           </select>
         </Field>
         <label className="mb-4 flex items-center gap-3 text-sm font-black text-navy" data-tour="transactions-shared">
-          <input className="h-4 w-4" name="shared" type="checkbox" />
+          <input className="h-4 w-4" name="shared" type="checkbox" defaultChecked={Boolean(draft?.shared)} />
           Dividir con mi pareja
         </label>
         <div data-tour="transactions-installments">
           <Field label="Meses sin intereses">
-            <select className="input" name="installments" defaultValue="1">
+            <select className="input" name="installments" defaultValue={String(draft?.installments || 1)}>
               <option value="1">Una exhibicion</option>
               <option value="3">3 MSI</option>
               <option value="6">6 MSI</option>
             </select>
           </Field>
         </div>
-        <button className="button-primary mt-2 w-full" type="submit">
-          <Plus size={18} />
-          Guardar movimiento
-        </button>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <button className="button-primary w-full" type="submit">
+            {draft ? <Check size={18} /> : <Plus size={18} />}
+            {draft ? "Actualizar movimiento" : "Guardar movimiento"}
+          </button>
+          {draft ? (
+            <button className="button-secondary w-full" type="button" onClick={onClearDraft}>
+              <X size={18} />
+              Cancelar edicion
+            </button>
+          ) : null}
+        </div>
       </form>
 
       <section className="panel" data-tour="transactions-list">
@@ -1762,6 +1827,9 @@ function TransactionsView({
                   </div>
                   <div className="flex items-center justify-between gap-2 md:justify-end">
                     <span className="pill">{formatMoney(transaction.amount)}</span>
+                    <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(transaction)}>
+                      Editar
+                    </button>
                     <button className="button-ghost px-3 py-2 text-red-700" type="button" onClick={() => onDelete(transaction)}>
                       <Trash2 size={16} />
                     </button>
