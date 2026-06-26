@@ -74,6 +74,13 @@
     @apply inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-orange-700 to-red-700 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-red-900/20 transition hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-ocean/20;
   }
 
+  .button-primary:disabled,
+  .button-secondary:disabled,
+  .button-ghost:disabled,
+  .button-danger:disabled {
+    @apply cursor-not-allowed opacity-55 hover:translate-y-0 hover:border-blue-200 hover:shadow-none;
+  }
+
   .input {
     @apply w-full rounded-2xl border border-blue-200 bg-white/85 px-3.5 py-3 text-sm text-ink outline-none transition focus:border-ocean focus:ring-4 focus:ring-ocean/15;
   }

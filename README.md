@@ -28,6 +28,8 @@ La app publica no debe contener datos personales. Los importes reales viven en r
 - Compras compartidas con pareja para separar total cargado vs carga personal.
 - Reportes mensuales con graficas y exportacion CSV/JSON.
 - Manual interno, ayuda contextual y tours guiados por modulo.
+- Consejos financieros accionables calculados desde el estado actual.
+- Actualizacion PWA desde la app, sin desinstalar ni perder IndexedDB.
 - PWA offline-first con IndexedDB.
 - Sync cifrado opcional con Cloudflare Worker.
 
@@ -56,7 +58,7 @@ npm run dev
 La app queda en:
 
 ```text
-http://127.0.0.1:4173
+http://127.0.0.1:4173/plan-financiero-pwa/
 ```
 
 ## Verificacion
@@ -65,6 +67,13 @@ http://127.0.0.1:4173
 cd pwa-finanzas
 npm run build
 npm run check:sync
+```
+
+En Codex local usa el Node empaquetado si el Node del sistema es viejo:
+
+```powershell
+C:\Users\uriel\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe .\node_modules\typescript\bin\tsc -b
+C:\Users\uriel\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe .\node_modules\vite\bin\vite.js build --configLoader native
 ```
 
 Si tienes el respaldo privado local requerido por el verificador:
@@ -88,6 +97,13 @@ Este repo incluye un grafo local generado con Graphify:
 
 Cuando el MCP de Graphify este cargado en Codex, puede consultar ese grafo para responder preguntas de arquitectura sin leer todo el repo cada vez.
 
+Despues de tocar codigo corre:
+
+```powershell
+graphify update . --scope auto --no-description --no-label --force
+graphify portable-check .graphify
+```
+
 ## Privacidad
 
 No subas:
@@ -97,5 +113,6 @@ No subas:
 - exports con importes reales;
 - archivos bajo `private-data/`, `work/` u `outputs/`;
 - cache local de Graphify.
+- tokens pegados en chat o terminal compartida.
 
 Si un token fue pegado accidentalmente en una conversacion o archivo, hay que revocarlo y generar uno nuevo.

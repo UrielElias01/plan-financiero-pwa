@@ -12,6 +12,13 @@ El Worker solo guarda:
 
 No guarda tus datos financieros en claro.
 
+Por defecto responde CORS con `*` para no romper instalaciones existentes. Para
+restringirlo a la PWA publica, configura la variable del Worker:
+
+```text
+ALLOWED_ORIGIN=https://urielelias01.github.io
+```
+
 ## Requisitos
 
 - Cuenta gratuita de Cloudflare.
@@ -80,6 +87,7 @@ Para otro dispositivo:
 - No subas la contrasena a ningun repositorio.
 - No pegues tokens de Cloudflare en archivos; usa variables de entorno o secretos
   de GitHub.
+- Configura `ALLOWED_ORIGIN` si el Worker solo debe aceptar llamadas desde GitHub Pages.
 - Si pierdes la contrasena, el backend no puede descifrar el respaldo.
 - Si alguien conoce el endpoint, ID y contrasena, puede leer o sobrescribir ese
   respaldo.
@@ -91,4 +99,3 @@ backend manualmente desde GitHub. Antes agrega estos secretos al repo:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
-

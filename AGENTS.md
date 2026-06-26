@@ -16,3 +16,16 @@ Rules:
 - For review impact on changed files, use `graphify review-delta --graph .graphify/graph.json` instead of generic traversal
 - Read `.graphify/GRAPH_REPORT.md` only for broad architecture review or when `query` / `path` / `explain` do not surface enough context
 - After modifying code files in this session, run `graphify update . --scope auto --no-description --no-label --force` to keep the graph current
+
+## build
+
+- The app lives in `pwa-finanzas/` and Vite uses `base: "/plan-financiero-pwa/"`; local URL is `http://127.0.0.1:4173/plan-financiero-pwa/`
+- Prefer the packaged Node runtime when the system Node/npm is too old:
+  - `C:\Users\uriel\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe .\node_modules\typescript\bin\tsc -b`
+  - `C:\Users\uriel\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe .\node_modules\vite\bin\vite.js build --configLoader native`
+
+## security
+
+- Never commit private backups, real exported amounts, PATs, Cloudflare tokens, or terminal logs containing them
+- If a token is pasted in chat or a file, treat it as compromised and rotate it
+- Cloudflare sync stores encrypted payloads only; set `ALLOWED_ORIGIN` on the Worker to restrict CORS when deploying production sync

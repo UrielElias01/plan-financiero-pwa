@@ -13,6 +13,8 @@ PWA offline-first para administrar un plan financiero quincenal. El frontend est
 - Reportes mensuales con graficas.
 - Manual dinamico con ayuda contextual por pantalla.
 - Tours guiados por modulo con foco visual, oscurecimiento, flechas y pasos detallados.
+- Consejos financieros accionables en `Inicio`, derivados de ahorro, TDC, recurrentes y flujo.
+- Busqueda/aplicacion de actualizaciones PWA desde `Ajustes`.
 - Importacion/exportacion JSON.
 - Exportacion CSV.
 - Persistencia local en IndexedDB.
@@ -48,7 +50,7 @@ npm run dev
 Abre:
 
 ```text
-http://127.0.0.1:4173
+http://127.0.0.1:4173/plan-financiero-pwa/
 ```
 
 ## Build y verificacion
@@ -60,6 +62,17 @@ npm run check:sync
 ```
 
 El build genera `dist/`, que es lo que publica GitHub Pages.
+
+Si estas en Codex y `npm` usa un Node viejo, corre el build directo con el Node empaquetado:
+
+```powershell
+C:\Users\uriel\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe .\node_modules\typescript\bin\tsc -b
+C:\Users\uriel\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe .\node_modules\vite\bin\vite.js build --configLoader native
+```
+
+## Actualizaciones PWA
+
+La app registra `public/sw.js`, busca nuevas versiones desde `Ajustes` y aplica el service worker en espera con `SKIP_WAITING`. Al actualizar no se borra IndexedDB; los datos se pierden solo si se desinstala la PWA o se borran los datos del sitio. Aun asi, exporta JSON o usa sync antes de cambios grandes.
 
 La verificacion privada de calculos usa un respaldo local ignorado por Git:
 

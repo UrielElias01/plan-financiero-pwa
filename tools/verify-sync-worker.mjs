@@ -67,7 +67,10 @@ async function request(path, options = {}) {
   const url = `https://sync.test${path}`;
   const headers = new Headers(options.headers || {});
   if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  return worker.fetch(new Request(url, { ...options, headers }), { STORE: kv });
+  return worker.fetch(new Request(url, { ...options, headers }), {
+    STORE: kv,
+    ALLOWED_ORIGIN: "https://urielelias01.github.io",
+  });
 }
 
 async function readJson(response) {
@@ -86,6 +89,9 @@ const payload = {
 
 let response = await request("/api/health");
 if (response.status !== 200 || !(await readJson(response)).ok) throw new Error("health failed");
+if (response.headers.get("Access-Control-Allow-Origin") !== "https://urielelias01.github.io") {
+  throw new Error("allowed origin header failed");
+}
 
 response = await request("/api/sync/test-plan", {
   method: "PUT",

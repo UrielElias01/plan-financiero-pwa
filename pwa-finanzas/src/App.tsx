@@ -59,10 +59,27 @@ import { exportMonthlyCsv, exportStateJson, readJsonFile } from "./lib/files";
 import { cloneSeed, today } from "./lib/seed";
 import { loadState, saveState } from "./lib/storage";
 import { decryptStateFromSync, encryptStateForSync, fetchSync, normalizeEndpoint, syncSecret } from "./lib/sync";
-import { registerServiceWorker } from "./lib/pwa";
+import {
+  applyServiceWorkerUpdate,
+  checkForServiceWorkerUpdate,
+  getServiceWorkerRegistration,
+  registerServiceWorker,
+} from "./lib/pwa";
+import type { PwaUpdateStatus } from "./lib/pwa";
 import type { AppState, CalculatedPeriod, CardDebtSummary, MonthlyReport, Period, RecurringItem, Transaction, ViewId } from "./lib/types";
 
 type Toast = { id: number; message: string; tone?: "ok" | "danger" };
+type InsightTone = "danger" | "warning" | "ok" | "info";
+type FinancialInsight = {
+  id: string;
+  title: string;
+  detail: string;
+  action: string;
+  value: string;
+  tone: InsightTone;
+  icon: LucideIcon;
+  view: ViewId;
+};
 type ConfirmConfig = {
   title: string;
   message: string;
@@ -655,6 +672,177 @@ function Field({
   );
 }
 
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value)) return "0%";
+  return `${Math.round(value)}%`;
+}
+
+function pwaStatusText(status: PwaUpdateStatus): string {
+  const labels: Record<PwaUpdateStatus, string> = {
+    unsupported: "No disponible",
+    checking: "Buscando",
+    current: "Actualizada",
+    available: "Lista",
+    activating: "Activando",
+    reloading: "Recargando",
+    error: "Error",
+  };
+  return labels[status];
+}
+
+function buildFinancialInsights(
+  state: AppState,
+  periods: CalculatedPeriod[],
+  monthly: MonthlyReport[],
+  cardDebt: CardDebtSummary,
+): FinancialInsight[] {
+  const insights: FinancialInsight[] = [];
+  const currentSavings = Math.max(0, asNumber(state.settings.currentSavings));
+  const salary = Math.max(0, asNumber(state.settings.salary));
+  const finalSavings = periods.at(-1)?.savings || currentSavings;
+  const lowestSavings = periods.reduce<CalculatedPeriod | null>(
+    (lowest, period) => (!lowest || period.savings < lowest.savings ? period : lowest),
+    null,
+  );
+  const worstFlow = periods.reduce<CalculatedPeriod | null>(
+    (worst, period) => (!worst || period.flow < worst.flow ? period : worst),
+    null,
+  );
+  const activeRecurring = state.recurring
+    .filter((item) => item.active && asNumber(item.amount) > 0)
+    .sort((left, right) => asNumber(right.amount) - asNumber(left.amount));
+  const inactiveRecurring = state.recurring.filter((item) => !item.active || asNumber(item.amount) <= 0);
+  const recurringTotal = activeRecurring.reduce((total, item) => total + Math.max(0, asNumber(item.amount)), 0);
+  const recurringTop = activeRecurring[0];
+  const nextPaymentShare = salary > 0 ? (cardDebt.nextPayment / salary) * 100 : 0;
+  const cardVsSavings = currentSavings > 0 ? (cardDebt.totalDebt / currentSavings) * 100 : 0;
+  const monthlyCardPeak = monthly.reduce((peak, row) => Math.max(peak, Math.abs(row.cardPayment)), 0);
+
+  if (cardDebt.totalDebt > currentSavings && currentSavings > 0) {
+    insights.push({
+      id: "card-above-savings",
+      title: "Tarjeta por encima del ahorro",
+      value: formatMoney(cardDebt.totalDebt - currentSavings),
+      detail: `El total ocupado equivale a ${formatPercent(cardVsSavings)} de tu ahorro actual.`,
+      action: "Congela compras nuevas y usa el siguiente pago para bajar saldo real.",
+      tone: "danger",
+      icon: CreditCard,
+      view: "card",
+    });
+  } else if (cardDebt.totalDebt > 0) {
+    insights.push({
+      id: "card-under-control",
+      title: "Tarjeta contenida",
+      value: formatMoney(cardDebt.totalDebt),
+      detail: "El saldo ocupado no rebasa tu ahorro actual.",
+      action: "Manten el pago siguiente y evita subir MSI mientras baja el saldo.",
+      tone: "ok",
+      icon: CreditCard,
+      view: "card",
+    });
+  }
+
+  if (cardDebt.nextPayment > 0) {
+    insights.push({
+      id: "next-card-payment",
+      title: "Proximo pago TDC",
+      value: formatMoney(cardDebt.nextPayment),
+      detail:
+        salary > 0
+          ? `Consume ${formatPercent(nextPaymentShare)} de un sueldo quincenal.`
+          : "Es el pago mas urgente del calendario de tarjeta.",
+      action: nextPaymentShare >= 70 ? "Apartalo antes de gastos variables." : "Registralo cuando se pague para liberar saldo ocupado.",
+      tone: nextPaymentShare >= 70 ? "warning" : "info",
+      icon: CalendarClock,
+      view: "card",
+    });
+  }
+
+  if (lowestSavings && lowestSavings.savings < 10000) {
+    insights.push({
+      id: "low-savings",
+      title: "Colchon apretado",
+      value: formatMoney(lowestSavings.savings),
+      detail: `${lowestSavings.label} es el punto mas bajo proyectado.`,
+      action: "Recorta gasto variable hasta volver arriba de $10,000.",
+      tone: "warning",
+      icon: WalletCards,
+      view: "periods",
+    });
+  }
+
+  if (recurringTop) {
+    insights.push({
+      id: "recurring-review",
+      title: "Recurrentes activos",
+      value: formatMoney(recurringTotal),
+      detail: `${activeRecurring.length} cargos activos; el mayor es ${recurringTop.name} (${formatMoney(recurringTop.amount)}).`,
+      action: `Si no se usa, pausalo antes del dia ${recurringTop.day}.`,
+      tone: recurringTotal >= 1000 ? "warning" : "info",
+      icon: ListChecks,
+      view: "recurring",
+    });
+  }
+
+  if (cardDebt.installmentBalance > 0) {
+    insights.push({
+      id: "future-card-balance",
+      title: "A meses / futuro",
+      value: formatMoney(cardDebt.installmentBalance),
+      detail: "Es saldo que sigue despues del siguiente corte.",
+      action: "Evita MSI nuevos hasta que este bloque baje de forma visible.",
+      tone: "info",
+      icon: ChartSpline,
+      view: "card",
+    });
+  }
+
+  if (worstFlow && worstFlow.flow < 0 && monthlyCardPeak > 0) {
+    insights.push({
+      id: "negative-flow",
+      title: "Flujo negativo detectado",
+      value: formatMoney(worstFlow.flow),
+      detail: `${worstFlow.label} es la quincena mas presionada por pagos y gastos.`,
+      action: "Mueve compras no urgentes fuera de esa quincena.",
+      tone: "danger",
+      icon: Lightbulb,
+      view: "periods",
+    });
+  }
+
+  if (inactiveRecurring.length > 0) {
+    const names = inactiveRecurring
+      .slice(0, 2)
+      .map((item) => item.name)
+      .join(", ");
+    insights.push({
+      id: "inactive-recurring",
+      title: "Gastos ya contenidos",
+      value: `${inactiveRecurring.length}`,
+      detail: `${names} ${inactiveRecurring.length === 1 ? "esta" : "estan"} apagados o en $0.`,
+      action: "No los reactives salvo que vuelvan a ser necesarios.",
+      tone: "ok",
+      icon: ShieldCheck,
+      view: "recurring",
+    });
+  }
+
+  if (finalSavings > currentSavings) {
+    insights.push({
+      id: "projected-recovery",
+      title: "Cierre mejora",
+      value: formatMoney(finalSavings - currentSavings),
+      detail: "El plan proyecta recuperar ahorro hacia noviembre.",
+      action: "Protege esa mejora evitando gastos recurrentes nuevos.",
+      tone: "ok",
+      icon: Sparkles,
+      view: "reports",
+    });
+  }
+
+  return insights.slice(0, 6);
+}
+
 export function App() {
   const [state, setState] = useState<AppState>(cloneSeed());
   const [ready, setReady] = useState(false);
@@ -677,7 +865,10 @@ export function App() {
   const [confirmConfig, setConfirmConfig] = useState<ConfirmConfig | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [pwaStatus, setPwaStatus] = useState<PwaUpdateStatus>("checking");
+  const [pwaRegistration, setPwaRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const updateReloadingRef = useRef(false);
 
   const periods = useMemo(() => calculatePeriodsFor(state), [state]);
   const monthly = useMemo(() => calculateMonthlyFor(state, periods), [state, periods]);
@@ -712,7 +903,44 @@ export function App() {
         }
       })
       .finally(() => setReady(true));
-    registerServiceWorker().catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) {
+      setPwaStatus("unsupported");
+      return undefined;
+    }
+
+    let disposed = false;
+    const handleControllerChange = () => {
+      if (updateReloadingRef.current) return;
+      updateReloadingRef.current = true;
+      setPwaStatus("reloading");
+      window.location.reload();
+    };
+
+    navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
+    registerServiceWorker({
+      onRegistered: (registration) => {
+        if (disposed) return;
+        setPwaRegistration(registration);
+        setPwaStatus(registration.waiting ? "available" : "current");
+      },
+      onUpdateAvailable: (registration) => {
+        if (disposed) return;
+        setPwaRegistration(registration);
+        setPwaStatus("available");
+        showToast("Actualizacion lista");
+      },
+    }).catch((error) => {
+      console.error(error);
+      if (!disposed) setPwaStatus("error");
+    });
+
+    return () => {
+      disposed = true;
+      navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -877,6 +1105,50 @@ export function App() {
     await installPrompt.prompt();
     await installPrompt.userChoice;
     setInstallPrompt(null);
+  }
+
+  async function checkForAppUpdate() {
+    if (!("serviceWorker" in navigator)) {
+      setPwaStatus("unsupported");
+      showToast("Actualizacion no disponible en este navegador", "danger");
+      return;
+    }
+
+    try {
+      setPwaStatus("checking");
+      const registration = await checkForServiceWorkerUpdate(pwaRegistration);
+      if (!registration) {
+        setPwaStatus("unsupported");
+        showToast("Actualizacion no disponible en este navegador", "danger");
+        return;
+      }
+
+      setPwaRegistration(registration);
+      if (registration.waiting) {
+        setPwaStatus("available");
+        showToast("Actualizacion lista");
+      } else {
+        setPwaStatus("current");
+        showToast("Ya tienes la version mas reciente");
+      }
+    } catch (error) {
+      console.error(error);
+      setPwaStatus("error");
+      showToast("No pude buscar actualizacion", "danger");
+    }
+  }
+
+  async function applyAppUpdate() {
+    const registration = pwaRegistration || (await getServiceWorkerRegistration());
+    setPwaRegistration(registration);
+    if (!applyServiceWorkerUpdate(registration)) {
+      setPwaStatus("current");
+      showToast("No hay actualizacion pendiente");
+      return;
+    }
+
+    setPwaStatus("activating");
+    showToast("Actualizando app");
   }
 
   function openPeriod(period: Period) {
@@ -1183,6 +1455,10 @@ export function App() {
 
   const lowSavings = periods.find((period) => period.savings < 10000);
   const negativeFlows = periods.filter((period) => period.flow < 0);
+  const financialInsights = useMemo(
+    () => buildFinancialInsights(state, periods, monthly, cardDebt),
+    [state, periods, monthly, cardDebt],
+  );
   const chartData = monthly.map((row) => ({
     month: row.month,
     ingresos: row.income,
@@ -1338,6 +1614,12 @@ export function App() {
                 <PlayCircle size={18} />
                 Tour
               </button>
+              {pwaStatus === "available" ? (
+                <button className="button-secondary" type="button" onClick={applyAppUpdate}>
+                  <RefreshCcw size={18} />
+                  Actualizar
+                </button>
+              ) : null}
               <button className="button-primary" type="button" onClick={() => setView("transactions")}>
                 <Plus size={18} />
                 Agregar gasto
@@ -1363,9 +1645,11 @@ export function App() {
                 hasRealData={hasRealData}
                 lowSavings={lowSavings}
                 negativeFlows={negativeFlows.length}
+                insights={financialInsights}
                 chartData={chartData}
                 onImport={importJson}
                 onEditPeriods={() => setView("periods")}
+                onNavigate={setView}
                 fileInputRef={fileInputRef}
               />
             ) : null}
@@ -1404,12 +1688,15 @@ export function App() {
                 setPassphrase={setPassphrase}
                 passphraseConfirm={passphraseConfirm}
                 setPassphraseConfirm={setPassphraseConfirm}
+                pwaStatus={pwaStatus}
                 onSubmitSettings={submitSettings}
                 onReset={resetTemplate}
                 onSaveSync={saveSyncSettings}
                 onTestSync={testSync}
                 onPushSync={pushSync}
                 onPullSync={pullSync}
+                onCheckUpdate={checkForAppUpdate}
+                onApplyUpdate={applyAppUpdate}
               />
             ) : null}
             {view === "guide" ? (
@@ -1519,9 +1806,11 @@ function Dashboard({
   hasRealData,
   lowSavings,
   negativeFlows,
+  insights,
   chartData,
   onImport,
   onEditPeriods,
+  onNavigate,
   fileInputRef,
 }: {
   periods: CalculatedPeriod[];
@@ -1531,9 +1820,11 @@ function Dashboard({
   hasRealData: boolean;
   lowSavings?: CalculatedPeriod;
   negativeFlows: number;
+  insights: FinancialInsight[];
   chartData: Array<Record<string, number | string>>;
   onImport: (file?: File | null) => void;
   onEditPeriods: () => void;
+  onNavigate: (view: ViewId) => void;
   fileInputRef: RefObject<HTMLInputElement>;
 }) {
   return (
@@ -1565,6 +1856,8 @@ function Dashboard({
         <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Total ocupado" icon={CreditCard} />
         <MetricCard label="Cierre proyectado" value={formatMoney(periods.at(-1)?.savings || 0)} note="Noviembre 2026" icon={ChartSpline} />
       </section>
+
+      {hasRealData ? <FinancialInsightsPanel insights={insights} onNavigate={onNavigate} /> : null}
 
       {!hasRealData ? (
         <section className="panel flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1611,7 +1904,7 @@ function Dashboard({
           </div>
         </div>
 
-        <div className="panel" data-tour="dashboard-alerts">
+        <div className="panel" data-tour="dashboard-risk-alerts">
           <p className="eyebrow">Alertas</p>
           <h3 className="mb-4 text-xl font-black text-navy">Atencion</h3>
           <div className="grid gap-3">
@@ -1646,6 +1939,63 @@ function Dashboard({
         <PeriodsTable periods={periods.slice(0, 6)} compact />
       </section>
     </div>
+  );
+}
+
+function FinancialInsightsPanel({
+  insights,
+  onNavigate,
+}: {
+  insights: FinancialInsight[];
+  onNavigate: (view: ViewId) => void;
+}) {
+  const toneClass: Record<InsightTone, string> = {
+    danger: "border-red-200 bg-red-50 text-red-950",
+    warning: "border-amber-200 bg-amber-50 text-amber-950",
+    ok: "border-emerald-200 bg-emerald-50 text-emerald-950",
+    info: "border-blue-200 bg-blue-50 text-slate-700",
+  };
+  const iconClass: Record<InsightTone, string> = {
+    danger: "bg-red-700 text-white",
+    warning: "bg-amber-500 text-white",
+    ok: "bg-emerald-700 text-white",
+    info: "bg-ocean text-white",
+  };
+
+  return (
+    <section className="grid gap-4" data-tour="dashboard-alerts">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="eyebrow">Consejos accionables</p>
+          <h3 className="text-xl font-black text-navy">Segun tu estado actual</h3>
+        </div>
+        <span className="pill w-fit">{insights.length} alertas y oportunidades</span>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {insights.map((insight) => {
+          const Icon = insight.icon;
+          return (
+            <article key={insight.id} className={`rounded-[1.35rem] border p-4 shadow-card ${toneClass[insight.tone]}`}>
+              <div className="flex items-start gap-3">
+                <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${iconClass[insight.tone]}`}>
+                  <Icon size={20} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-black">{insight.title}</p>
+                  <strong className="mt-1 block text-2xl font-black text-navy">{insight.value}</strong>
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-relaxed">{insight.detail}</p>
+              <p className="mt-2 text-sm font-black">{insight.action}</p>
+              <button className="button-ghost mt-4 bg-white/70" type="button" onClick={() => onNavigate(insight.view)}>
+                Abrir modulo
+                <ChevronRight size={16} />
+              </button>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -2160,12 +2510,15 @@ function SettingsView({
   setPassphrase,
   passphraseConfirm,
   setPassphraseConfirm,
+  pwaStatus,
   onSubmitSettings,
   onReset,
   onSaveSync,
   onTestSync,
   onPushSync,
   onPullSync,
+  onCheckUpdate,
+  onApplyUpdate,
 }: {
   state: AppState;
   syncDraft: AppState["sync"];
@@ -2174,14 +2527,18 @@ function SettingsView({
   setPassphrase: (value: string) => void;
   passphraseConfirm: string;
   setPassphraseConfirm: (value: string) => void;
+  pwaStatus: PwaUpdateStatus;
   onSubmitSettings: (event: FormEvent<HTMLFormElement>) => void;
   onReset: () => void;
   onSaveSync: () => void;
   onTestSync: () => void;
   onPushSync: () => void;
   onPullSync: () => void;
+  onCheckUpdate: () => void;
+  onApplyUpdate: () => void;
 }) {
   const settings = state.settings;
+  const updateBusy = pwaStatus === "checking" || pwaStatus === "activating" || pwaStatus === "reloading";
   return (
     <div className="grid gap-5">
       <form className="panel" onSubmit={onSubmitSettings} key={`settings-${state.updatedAt}`} data-tour="settings-form">
@@ -2255,6 +2612,29 @@ function SettingsView({
           <button className="button-ghost" type="button" onClick={onTestSync}>Probar conexion</button>
           <button className="button-primary" type="button" onClick={onPushSync}><ArrowUpFromLine size={18} />Subir cifrado</button>
           <button className="button-secondary" type="button" onClick={onPullSync}><ArrowDownToLine size={18} />Bajar cifrado</button>
+        </div>
+      </section>
+
+      <section className="panel" data-tour="settings-updates">
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="eyebrow">PWA</p>
+            <h3 className="text-2xl font-black text-navy">Actualizaciones</h3>
+          </div>
+          <span className="pill" aria-live="polite">{pwaStatusText(pwaStatus)}</span>
+        </div>
+        <p className="mb-5 text-sm text-slate-500">
+          Puedes instalar la version nueva sin desinstalar la app movil. Tus datos locales se quedan en IndexedDB; aun asi conviene hacer respaldo o sync antes de cambios grandes.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button className="button-ghost" type="button" onClick={onCheckUpdate} disabled={updateBusy}>
+            <RefreshCcw size={18} />
+            Buscar actualizacion
+          </button>
+          <button className="button-primary" type="button" onClick={onApplyUpdate} disabled={pwaStatus !== "available" || updateBusy}>
+            <Check size={18} />
+            Actualizar ahora
+          </button>
         </div>
       </section>
     </div>
