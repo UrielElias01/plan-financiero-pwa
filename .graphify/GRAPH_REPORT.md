@@ -1,24 +1,24 @@
 # Graph Report - .  (2026-06-30)
 
 ## Corpus Check
-- Corpus is ~21,957 words - fits in a single context window. You may not need a graph.
+- Corpus is ~21,996 words - fits in a single context window. You may not need a graph.
 
 ## Summary
-- 229 nodes · 490 edges · 16 communities detected
+- 230 nodes · 495 edges · 16 communities detected
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
-- Edge kinds: contains: 170 · calls: 114 · MODIFIES: 62 · imports: 61 · imports_from: 29 · ON_BRANCH: 22 · PARENT_OF: 21 · method: 11
+- Edge kinds: contains: 170 · calls: 114 · MODIFIES: 65 · imports: 61 · imports_from: 29 · ON_BRANCH: 23 · PARENT_OF: 22 · method: 11
 
 
 ## Input Scope
 - Requested: auto
 - Resolved: committed (source: cli)
 - Included files: 31 · Candidates: 44
-- Excluded: 0 untracked · 28879 ignored · 0 sensitive · 0 missing committed
+- Excluded: 0 untracked · 28882 ignored · 0 sensitive · 0 missing committed
 - Recommendation: Use --scope all or graphify.yaml inputs.corpus for a knowledge-base folder.
 
 ## Graph Freshness
-- Built from Git commit: `f6cb3c2`
+- Built from Git commit: `9b17bd7`
 - Compare this hash to `git rev-parse HEAD` before trusting freshness-sensitive graph output.
 ## God Nodes (most connected - your core abstractions)
 1. `positiveAmount()` - 18 edges
@@ -39,10 +39,10 @@
   git → git  _Bridges community 1 → community 7_
 - `3a6b2b9 Correct card used balance calculation` --PARENT_OF--> `b893545 Fix recurring item editing`  [EXTRACTED]
   git → git  _Bridges community 7 → community 2_
-- `applyTransactionToState()` --calls--> `baseSettingsBalance()`  [EXTRACTED]
-  pwa-finanzas/src/lib/calculations.ts → pwa-finanzas/src/lib/calculations.ts  _Bridges community 10 → community 5_
-- `buildRecurringEffects()` --calls--> `buildPaymentScheduleFor()`  [EXTRACTED]
-  pwa-finanzas/src/lib/calculations.ts → pwa-finanzas/src/lib/calculations.ts  _Bridges community 14 → community 10_
+- `992401d Fix used credit balance migration` --PARENT_OF--> `bb58d8c Add financial insights and PWA updates`  [EXTRACTED]
+  git → git  _Bridges community 2 → community 8_
+- `9b17bd7 Fix payroll closing period dates` --ON_BRANCH--> `main`  [EXTRACTED]
+  git → git  _Bridges community 4 → community 1_
 
 ## Communities
 
@@ -51,8 +51,8 @@ Cohesion: 0.05
 Nodes (15): lucide-react, recharts, ConfirmConfig, emptyRecurring, FinancialInsight, GuidedTourStep, guidedTourSteps, GuideTopic (+7 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.12
-Nodes (22): main, sync_state, 1107313 Migrate PWA to React Vite, 12bd41c Add ponytail and graphify dependencies, 1f49763 Deploy Cloudflare KV sync backend, 4e52d92 Fix mobile menu scroll lock, 54e9dd9 Add guided app tour, 64f025e Add dynamic user guide (+14 more)
+Cohesion: 0.13
+Nodes (20): main, sync_state, 1107313 Migrate PWA to React Vite, 12bd41c Add ponytail and graphify dependencies, 1f49763 Deploy Cloudflare KV sync backend, 4e52d92 Fix mobile menu scroll lock, 54e9dd9 Add guided app tour, 64f025e Add dynamic user guide (+12 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.13
@@ -64,7 +64,7 @@ Nodes (8): worker.ts, db, FakeD1, FakeKV, FakeStatement, kv, payload, secret
 
 ### Community 4 - "Community 4"
 Cohesion: 0.15
-Nodes (13): duePayrollPeriodsFor(), cloneSeed(), seedState, today, loadState(), openDb(), saveState(), AppState (+5 more)
+Nodes (15): 9b17bd7 Fix payroll closing period dates, f6cb3c2 Add period rollover actions, duePayrollPeriodsFor(), cloneSeed(), seedState, today, loadState(), openDb() (+7 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.28
@@ -79,8 +79,8 @@ Cohesion: 0.17
 Nodes (12): 2a63dcc Add card debt tracking and finance docs, 3a6b2b9 Correct card used balance calculation, CalculatedPeriod, CardCalendarEntry, CardDebtSummary, PaymentScheduleItem, Period, RecurringItem (+4 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.29
-Nodes (9): applyServiceWorkerUpdate(), checkForServiceWorkerUpdate(), getServiceWorkerRegistration(), hasWaitingWorker(), PwaUpdateStatus, registerServiceWorker(), RegisterServiceWorkerOptions, waitForInstallingWorker() (+1 more)
+Cohesion: 0.25
+Nodes (10): bb58d8c Add financial insights and PWA updates, applyServiceWorkerUpdate(), checkForServiceWorkerUpdate(), getServiceWorkerRegistration(), hasWaitingWorker(), PwaUpdateStatus, registerServiceWorker(), RegisterServiceWorkerOptions (+2 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.44
@@ -126,8 +126,10 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.05 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.12169312169312169 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.12923076923076923 - nodes in this community are weakly interconnected._
 - **Should `Community 2` be split into smaller, more focused modules?**
   _Cohesion score 0.13043478260869565 - nodes in this community are weakly interconnected._
 - **Should `Community 3` be split into smaller, more focused modules?**
   _Cohesion score 0.12105263157894737 - nodes in this community are weakly interconnected._
+- **Should `Community 4` be split into smaller, more focused modules?**
+  _Cohesion score 0.14619883040935672 - nodes in this community are weakly interconnected._
