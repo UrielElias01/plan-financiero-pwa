@@ -38,8 +38,8 @@ Cuando llega la fecha de pago de una quincena, la app puede cerrar esa quincena 
 
 Reglas:
 
-- Para la primera quincena del mes, la fecha de pago es el ultimo dia del mes anterior.
-- Para la segunda quincena del mes, la fecha de pago es el dia 15 del mismo mes.
+- Para la primera quincena del mes, la fecha de pago es el dia 15 del mismo mes.
+- Para la segunda quincena del mes, la fecha de pago es el ultimo dia del mismo mes.
 - Al cerrar, se suma `salary + extraIncome + partnerIncome` a `settings.currentSavings`.
 - La renta de esa quincena (`rent`, guardada negativa) se resta del ahorro y se suma a `settings.rentReserve`.
 - La quincena queda marcada como cerrada y sus campos de sueldo/renta se ponen en cero para no duplicar la proyeccion.

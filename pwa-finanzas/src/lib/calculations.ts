@@ -181,8 +181,8 @@ function estimatedPeriodFor(inputState: AppState, parts: PeriodDateParts): Perio
     label: periodLabelFor(parts),
     note:
       parts.half === 1
-        ? "Quincena financiada con el sueldo del ultimo dia del mes anterior."
-        : "Quincena financiada con el sueldo del 15. Aqui suele caer el pago de tarjeta.",
+        ? "Quincena que cierra con el sueldo del dia 15."
+        : "Quincena que cierra con el sueldo del ultimo dia del mes. Aqui suele caer el pago de tarjeta.",
     salary: inputState.settings.salary,
     extraIncome: 0,
     partnerIncome: inputState.settings.defaultFood / 2,
@@ -203,7 +203,7 @@ export function buildNextPeriodFor(inputState: AppState): Period | null {
 export function paydayForPeriod(period: Period): string | null {
   const parts = periodDateParts(period);
   if (!parts) return null;
-  return parts.half === 1 ? addDays(dateForDay(parts.year, parts.month, 1), -1) : dateForDay(parts.year, parts.month, 15);
+  return parts.half === 1 ? dateForDay(parts.year, parts.month, 15) : dateForDay(parts.year, parts.month, 31);
 }
 
 function closingIncomeFor(period: Period): number {
@@ -217,7 +217,7 @@ function closingRentReserveFor(period: Period): number {
 export function duePayrollPeriodsFor(inputState: AppState, asOf = defaultToday): Period[] {
   return inputState.periods.filter((period) => {
     const payday = paydayForPeriod(period);
-    if (!payday || payday > asOf || period.closedAt || period.lockedBase) return false;
+    if (!payday || payday > asOf || period.closedAt) return false;
     return closingIncomeFor(period) !== 0 || closingRentReserveFor(period) > 0;
   });
 }
