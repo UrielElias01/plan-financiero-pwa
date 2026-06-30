@@ -51,6 +51,7 @@ import {
   calculateCardDebtFor,
   calculateMonthlyFor,
   calculatePeriodsFor,
+  closingPreviewFor,
   closePeriodFor,
   duePayrollPeriodsFor,
   formatMoney,
@@ -1192,8 +1193,7 @@ export function App() {
   }
 
   async function closePayrollPeriod(period: Period) {
-    const income = asNumber(period.salary) + asNumber(period.extraIncome) + asNumber(period.partnerIncome);
-    const rentReserve = Math.max(0, -asNumber(period.rent));
+    const { income, rentReserve } = closingPreviewFor(state, period);
     if (income === 0 && rentReserve <= 0) {
       showToast("Esta quincena no tiene sueldo o renta pendiente", "danger");
       return;
@@ -1695,6 +1695,7 @@ export function App() {
             {view === "periods" ? (
               <PeriodsView
                 periods={periods}
+                state={state}
                 duePayrollPeriods={duePayrollPeriods}
                 onEdit={openPeriod}
                 onAdd={addPeriod}
@@ -2114,12 +2115,14 @@ function PeriodsTable({
 
 function PeriodsView({
   periods,
+  state,
   duePayrollPeriods,
   onEdit,
   onAdd,
   onClosePayrollPeriod,
 }: {
   periods: CalculatedPeriod[];
+  state: AppState;
   duePayrollPeriods: Period[];
   onEdit: (period: Period) => void;
   onAdd: () => void;
@@ -2127,10 +2130,7 @@ function PeriodsView({
 }) {
   const duePeriod = duePayrollPeriods[0];
   const duePeriodIds = new Set(duePayrollPeriods.map((period) => period.id));
-  const dueIncome = duePeriod
-    ? asNumber(duePeriod.salary) + asNumber(duePeriod.extraIncome) + asNumber(duePeriod.partnerIncome)
-    : 0;
-  const dueRentReserve = duePeriod ? Math.max(0, -asNumber(duePeriod.rent)) : 0;
+  const duePreview = duePeriod ? closingPreviewFor(state, duePeriod) : { income: 0, rentReserve: 0 };
   const duePayday = duePeriod ? paydayForPeriod(duePeriod) : null;
   return (
     <div className="grid gap-5">
@@ -2141,7 +2141,7 @@ function PeriodsView({
               <p className="eyebrow text-emerald-700">Cierre disponible</p>
               <h3 className="text-2xl font-black text-navy">{duePeriod.label}</h3>
               <p className="mt-2 text-sm text-emerald-950">
-                Fecha de pago: {duePayday}. Ahorro sube neto {formatMoney(dueIncome - dueRentReserve)} y renta apartada sube {formatMoney(dueRentReserve)}.
+                Fecha de pago: {duePayday}. Ahorro sube neto {formatMoney(duePreview.income - duePreview.rentReserve)} y renta apartada sube {formatMoney(duePreview.rentReserve)}.
               </p>
             </div>
             <button className="button-primary" type="button" onClick={() => onClosePayrollPeriod(duePeriod)}>

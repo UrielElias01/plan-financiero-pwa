@@ -214,11 +214,27 @@ function closingRentReserveFor(period: Period): number {
   return positiveAmount(-period.rent);
 }
 
+export function closingPreviewFor(inputState: AppState, period: Period): { income: number; rentReserve: number } {
+  let income = closingIncomeFor(period);
+  const rentReserve = closingRentReserveFor(period);
+  if (!period.lockedBase) return { income, rentReserve };
+
+  if (asNumber(period.salary) === 0) {
+    income += asNumber(inputState.settings.salary);
+  }
+
+  return {
+    income,
+    rentReserve: rentReserve || positiveAmount(inputState.settings.monthlyRent / 2),
+  };
+}
+
 export function duePayrollPeriodsFor(inputState: AppState, asOf = defaultToday): Period[] {
   return inputState.periods.filter((period) => {
     const payday = paydayForPeriod(period);
     if (!payday || payday > asOf || period.closedAt) return false;
-    return closingIncomeFor(period) !== 0 || closingRentReserveFor(period) > 0;
+    const preview = closingPreviewFor(inputState, period);
+    return preview.income !== 0 || preview.rentReserve > 0;
   });
 }
 
@@ -230,8 +246,7 @@ export function closePeriodFor(
   const period = inputState.periods.find((entry) => entry.id === periodId);
   if (!period || period.closedAt) return { state: inputState };
 
-  const income = closingIncomeFor(period);
-  const rentReserve = closingRentReserveFor(period);
+  const { income, rentReserve } = closingPreviewFor(inputState, period);
   const closed: Period = {
     ...period,
     salary: 0,

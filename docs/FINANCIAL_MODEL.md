@@ -42,6 +42,7 @@ Reglas:
 - Para la segunda quincena del mes, la fecha de pago es el ultimo dia del mismo mes.
 - Al cerrar, se suma `salary + extraIncome + partnerIncome` a `settings.currentSavings`.
 - La renta de esa quincena (`rent`, guardada negativa) se resta del ahorro y se suma a `settings.rentReserve`.
+- Si la quincena base esta vacia, el cierre usa `settings.salary` y la mitad de `settings.monthlyRent`.
 - La quincena queda marcada como cerrada y sus campos de sueldo/renta se ponen en cero para no duplicar la proyeccion.
 - Si falta la siguiente quincena visible, se agrega usando los supuestos actuales (`salary`, `monthlyRent`, `defaultFood`).
 
