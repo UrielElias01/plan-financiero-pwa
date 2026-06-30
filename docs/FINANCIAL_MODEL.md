@@ -32,6 +32,21 @@ Cada `Period` representa una quincena. Los importes que salen de dinero real se 
 
 La primera quincena es la base actual del plan. Su ahorro es `settings.currentSavings`; no se recalcula completa para evitar doble conteo de gastos que ya ocurrieron antes de importar o actualizar el respaldo.
 
+### Cierre de quincena / sueldo
+
+Cuando llega la fecha de pago de una quincena, la app puede cerrar esa quincena desde `Quincenas`.
+
+Reglas:
+
+- Para la primera quincena del mes, la fecha de pago es el ultimo dia del mes anterior.
+- Para la segunda quincena del mes, la fecha de pago es el dia 15 del mismo mes.
+- Al cerrar, se suma `salary + extraIncome + partnerIncome` a `settings.currentSavings`.
+- La renta de esa quincena (`rent`, guardada negativa) se resta del ahorro y se suma a `settings.rentReserve`.
+- La quincena queda marcada como cerrada y sus campos de sueldo/renta se ponen en cero para no duplicar la proyeccion.
+- Si falta la siguiente quincena visible, se agrega usando los supuestos actuales (`salary`, `monthlyRent`, `defaultFood`).
+
+La renta apartada vive fuera del ahorro. Cuando se paga la renta con ese dinero separado, `Ajustes > Apartado de renta > Renta pagada` pone `settings.rentReserve` en cero sin tocar `currentSavings`.
+
 ## Movimientos
 
 ### Efectivo / debito

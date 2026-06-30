@@ -29,6 +29,9 @@ export type Period = {
   chatGptCredit: number;
   cardPayment: number;
   lockedBase?: boolean;
+  closedAt?: string;
+  appliedIncome?: number;
+  appliedRentReserve?: number;
 };
 
 export type RecurringItem = {

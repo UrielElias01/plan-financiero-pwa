@@ -5,6 +5,7 @@ PWA offline-first para administrar un plan financiero quincenal. El frontend est
 ## Funcionalidad
 
 - Plan quincenal editable.
+- Cierre de quincena con aplicacion de sueldo, apartado de renta y alta de la siguiente quincena estimada.
 - Movimientos de efectivo y tarjeta.
 - Gastos recurrentes.
 - Calendario de pagos de tarjeta y MSI.
@@ -34,6 +35,8 @@ El boton `Tour` inicia una guia flotante que cambia de pantalla conforme avanzas
 - Si el debito fue compartido, el ajuste directo al ahorro usa solo tu mitad.
 - Una compra con `Tarjeta de credito` no baja el ahorro al capturarla; se agenda como pago futuro de TDC.
 - La pantalla `Tarjeta` muestra `Pago al corte` y `Saldo utilizado TDC`. Ese saldo debe coincidir con el credito usado que muestra el banco; en Ajustes puedes capturarlo directamente.
+- Cuando llegue la fecha de pago, usa `Quincenas > Cerrar quincena` para sumar el sueldo real al ahorro, separar la renta y evitar doble conteo en la proyeccion.
+- Cuando ya pagaste la renta con el dinero separado, usa `Ajustes > Apartado de renta > Renta pagada`.
 - Los campos avanzados de `Ajustes > Base de tarjeta` permiten corregir saldo previo, pagos aplicados, puntos y saldos no recurrentes.
 
 La documentacion completa del modelo esta en `../docs/FINANCIAL_MODEL.md`.
@@ -58,6 +61,7 @@ http://127.0.0.1:4173/plan-financiero-pwa/
 ```powershell
 npm run build
 npm run check
+npm run check:rollover
 npm run check:sync
 ```
 

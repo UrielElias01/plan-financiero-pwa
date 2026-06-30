@@ -109,6 +109,21 @@ const monthByName: Record<string, number> = {
   Diciembre: 12,
 };
 
+const monthNames = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+
 function periodDateParts(period: Period): PeriodDateParts | null {
   const idMatch = /^(\d{4})-(\d{2})-h([12])$/.exec(period.id);
   if (idMatch) {
@@ -142,6 +157,111 @@ function addDays(date: string, days: number): string {
   const [year, month, day] = date.split("-").map((part) => asNumber(part));
   const next = new Date(Date.UTC(year, month - 1, day + days));
   return `${next.getUTCFullYear()}-${padDatePart(next.getUTCMonth() + 1)}-${padDatePart(next.getUTCDate())}`;
+}
+
+function nextPeriodParts(parts: PeriodDateParts): PeriodDateParts {
+  if (parts.half === 1) return { ...parts, half: 2 };
+  const nextMonth = parts.month === 12 ? 1 : parts.month + 1;
+  const nextYear = parts.month === 12 ? parts.year + 1 : parts.year;
+  return { year: nextYear, month: nextMonth, half: 1 };
+}
+
+function periodIdFor(parts: PeriodDateParts): string {
+  return `${parts.year}-${padDatePart(parts.month)}-h${parts.half}`;
+}
+
+function periodLabelFor(parts: PeriodDateParts): string {
+  return `${parts.half === 1 ? "1a" : "2a"} ${monthNames[parts.month - 1].toLowerCase()}`;
+}
+
+function estimatedPeriodFor(inputState: AppState, parts: PeriodDateParts): Period {
+  return {
+    id: periodIdFor(parts),
+    month: monthNames[parts.month - 1],
+    label: periodLabelFor(parts),
+    note:
+      parts.half === 1
+        ? "Quincena financiada con el sueldo del ultimo dia del mes anterior."
+        : "Quincena financiada con el sueldo del 15. Aqui suele caer el pago de tarjeta.",
+    salary: inputState.settings.salary,
+    extraIncome: 0,
+    partnerIncome: inputState.settings.defaultFood / 2,
+    rent: -(inputState.settings.monthlyRent / 2),
+    debitServices: 0,
+    foodCredit: inputState.settings.defaultFood,
+    chatGptCredit: 0,
+    cardPayment: 0,
+  };
+}
+
+export function buildNextPeriodFor(inputState: AppState): Period | null {
+  const last = inputState.periods.at(-1);
+  const parts = last ? periodDateParts(last) : null;
+  return parts ? estimatedPeriodFor(inputState, nextPeriodParts(parts)) : null;
+}
+
+export function paydayForPeriod(period: Period): string | null {
+  const parts = periodDateParts(period);
+  if (!parts) return null;
+  return parts.half === 1 ? addDays(dateForDay(parts.year, parts.month, 1), -1) : dateForDay(parts.year, parts.month, 15);
+}
+
+function closingIncomeFor(period: Period): number {
+  return asNumber(period.salary) + asNumber(period.extraIncome) + asNumber(period.partnerIncome);
+}
+
+function closingRentReserveFor(period: Period): number {
+  return positiveAmount(-period.rent);
+}
+
+export function duePayrollPeriodsFor(inputState: AppState, asOf = defaultToday): Period[] {
+  return inputState.periods.filter((period) => {
+    const payday = paydayForPeriod(period);
+    if (!payday || payday > asOf || period.closedAt || period.lockedBase) return false;
+    return closingIncomeFor(period) !== 0 || closingRentReserveFor(period) > 0;
+  });
+}
+
+export function closePeriodFor(
+  inputState: AppState,
+  periodId: string,
+  closedAt = defaultToday,
+): { state: AppState; closed?: Period; nextPeriod?: Period } {
+  const period = inputState.periods.find((entry) => entry.id === periodId);
+  if (!period || period.closedAt) return { state: inputState };
+
+  const income = closingIncomeFor(period);
+  const rentReserve = closingRentReserveFor(period);
+  const closed: Period = {
+    ...period,
+    salary: 0,
+    extraIncome: 0,
+    partnerIncome: 0,
+    rent: 0,
+    closedAt,
+    appliedIncome: income,
+    appliedRentReserve: rentReserve,
+  };
+  let periods = inputState.periods.map((entry) => (entry.id === period.id ? closed : entry));
+  const nextPeriod = buildNextPeriodFor({ ...inputState, periods });
+  const shouldAppendNextPeriod = Boolean(nextPeriod && !periods.some((entry) => entry.id === nextPeriod.id));
+  if (nextPeriod && shouldAppendNextPeriod) {
+    periods = [...periods, nextPeriod];
+  }
+
+  return {
+    state: {
+      ...inputState,
+      settings: {
+        ...inputState.settings,
+        currentSavings: inputState.settings.currentSavings + income - rentReserve,
+        rentReserve: inputState.settings.rentReserve + rentReserve,
+      },
+      periods,
+    },
+    closed,
+    nextPeriod: shouldAppendNextPeriod ? nextPeriod || undefined : undefined,
+  };
 }
 
 function recurringHalf(day: number): 1 | 2 {

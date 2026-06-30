@@ -21,6 +21,7 @@ La app publica no debe contener datos personales. Los importes reales viven en r
 
 - Plan por quincenas, respetando que cada sueldo financia la quincena siguiente.
 - Ahorro actual y renta apartada por separado.
+- Cierre de quincena para aplicar sueldo, separar renta y agregar la siguiente quincena estimada.
 - Movimientos de tarjeta de credito, efectivo o debito.
 - Pagos con tarjeta a una exhibicion, 3 MSI o 6 MSI.
 - Saldo utilizado de tarjeta, adicional al pago al corte.
@@ -43,6 +44,7 @@ Resumen corto:
 - La primera quincena representa el estado actual; por eso no se recalcula completa como una quincena futura.
 - Un movimiento de efectivo/debito en la primera quincena baja `currentSavings` directamente.
 - Una compra de tarjeta no baja el ahorro al capturarla; genera pagos futuros de TDC.
+- Al cerrar una quincena, el sueldo se aplica al ahorro y la renta pasa al apartado; al pagar renta, se restablece ese apartado desde Ajustes.
 - El saldo utilizado de TDC se captura como el numero real que muestra el banco; si esta en cero, la app usa los campos legacy como respaldo.
 
 ## Desarrollo local
@@ -66,6 +68,7 @@ http://127.0.0.1:4173/plan-financiero-pwa/
 ```powershell
 cd pwa-finanzas
 npm run build
+npm run check:rollover
 npm run check:sync
 ```
 

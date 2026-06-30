@@ -46,13 +46,17 @@ import type { LucideIcon } from "lucide-react";
 import {
   applyTransactionToState,
   asNumber,
+  buildNextPeriodFor,
   buildPaymentScheduleFor,
   calculateCardDebtFor,
   calculateMonthlyFor,
   calculatePeriodsFor,
+  closePeriodFor,
+  duePayrollPeriodsFor,
   formatMoney,
   materializeDueRecurringTransactions,
   normalizeState,
+  paydayForPeriod,
   signedTone,
 } from "./lib/calculations";
 import { exportMonthlyCsv, exportStateJson, readJsonFile } from "./lib/files";
@@ -873,6 +877,7 @@ export function App() {
   const periods = useMemo(() => calculatePeriodsFor(state), [state]);
   const monthly = useMemo(() => calculateMonthlyFor(state, periods), [state, periods]);
   const cardDebt = useMemo(() => calculateCardDebtFor(state, periods), [state, periods]);
+  const duePayrollPeriods = useMemo(() => duePayrollPeriodsFor(state, today), [state]);
   const activeNav = navItems.find((item) => item.id === view) || navItems[0];
   const activeGuide = guideTopics.find((topic) => topic.id === (guideTopicId || view)) || guideTopics[0];
   const activeTourStep = guidedTourSteps[tourStepIndex] || guidedTourSteps[0];
@@ -1168,10 +1173,9 @@ export function App() {
   }
 
   async function addPeriod() {
-    const last = state.periods.at(-1);
-    const period: Period = {
+    const period: Period = buildNextPeriodFor(state) || {
       id: crypto.randomUUID(),
-      month: last?.month || "Nuevo",
+      month: "Nuevo",
       label: "Nueva quincena",
       note: "Edita esta quincena",
       salary: state.settings.salary,
@@ -1185,6 +1189,41 @@ export function App() {
     };
     await commit({ ...state, periods: [...state.periods, period] }, "Quincena agregada");
     setPeriodDraft(period);
+  }
+
+  async function closePayrollPeriod(period: Period) {
+    const income = asNumber(period.salary) + asNumber(period.extraIncome) + asNumber(period.partnerIncome);
+    const rentReserve = Math.max(0, -asNumber(period.rent));
+    if (income === 0 && rentReserve <= 0) {
+      showToast("Esta quincena no tiene sueldo o renta pendiente", "danger");
+      return;
+    }
+
+    const confirmed = await confirmAction({
+      title: `Cerrar ${period.label}`,
+      message: `Se sumaran ${formatMoney(income)} al ahorro, se apartaran ${formatMoney(rentReserve)} para renta y se agregara la siguiente quincena calculada si falta.`,
+      confirmText: "Cerrar quincena",
+    });
+    if (!confirmed) return;
+
+    const result = closePeriodFor(state, period.id, today);
+    await commit(result.state, result.nextPeriod ? "Quincena cerrada y siguiente agregada" : "Quincena cerrada");
+  }
+
+  async function resetRentReserve() {
+    const rentReserve = Math.max(0, asNumber(state.settings.rentReserve));
+    if (rentReserve <= 0) {
+      showToast("No hay renta apartada por restablecer", "danger");
+      return;
+    }
+
+    const confirmed = await confirmAction({
+      title: "Registrar renta pagada",
+      message: `Se pondra la renta apartada en $0.00 porque ya pagaste ${formatMoney(rentReserve)} fuera del ahorro.`,
+      confirmText: "Renta pagada",
+    });
+    if (!confirmed) return;
+    await commit({ ...state, settings: { ...state.settings, rentReserve: 0 } }, "Renta apartada restablecida");
   }
 
   async function submitTransaction(event: FormEvent<HTMLFormElement>) {
@@ -1653,7 +1692,15 @@ export function App() {
                 fileInputRef={fileInputRef}
               />
             ) : null}
-            {view === "periods" ? <PeriodsView periods={periods} onEdit={openPeriod} onAdd={addPeriod} /> : null}
+            {view === "periods" ? (
+              <PeriodsView
+                periods={periods}
+                duePayrollPeriods={duePayrollPeriods}
+                onEdit={openPeriod}
+                onAdd={addPeriod}
+                onClosePayrollPeriod={closePayrollPeriod}
+              />
+            ) : null}
             {view === "transactions" ? (
               <TransactionsView
                 state={state}
@@ -1697,6 +1744,7 @@ export function App() {
                 onPullSync={pullSync}
                 onCheckUpdate={checkForAppUpdate}
                 onApplyUpdate={applyAppUpdate}
+                onResetRentReserve={resetRentReserve}
               />
             ) : null}
             {view === "guide" ? (
@@ -1999,7 +2047,21 @@ function FinancialInsightsPanel({
   );
 }
 
-function PeriodsTable({ periods, compact, onEdit, tourTarget }: { periods: CalculatedPeriod[]; compact?: boolean; onEdit?: (period: Period) => void; tourTarget?: string }) {
+function PeriodsTable({
+  periods,
+  compact,
+  duePeriodIds,
+  onEdit,
+  onClosePayrollPeriod,
+  tourTarget,
+}: {
+  periods: CalculatedPeriod[];
+  compact?: boolean;
+  duePeriodIds?: Set<string>;
+  onEdit?: (period: Period) => void;
+  onClosePayrollPeriod?: (period: Period) => void;
+  tourTarget?: string;
+}) {
   return (
     <div className={`table-scroll ${compact ? "table-scroll-compact" : ""} overflow-x-auto rounded-3xl border border-blue-100 bg-white/80`} data-tour={tourTarget}>
       <table className="w-full border-collapse">
@@ -2029,9 +2091,17 @@ function PeriodsTable({ periods, compact, onEdit, tourTarget }: { periods: Calcu
               <td className="table-cell font-black text-navy">{formatMoney(period.savings)}</td>
               {onEdit ? (
                 <td className="table-cell">
-                  <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(period)}>
-                    Editar
-                  </button>
+                  <div className="flex justify-end gap-2">
+                    {period.closedAt ? <span className="pill">Cerrada</span> : null}
+                    {!period.closedAt && duePeriodIds?.has(period.id) && onClosePayrollPeriod ? (
+                      <button className="button-primary px-3 py-2" type="button" onClick={() => onClosePayrollPeriod(period)}>
+                        Cerrar
+                      </button>
+                    ) : null}
+                    <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(period)}>
+                      Editar
+                    </button>
+                  </div>
                 </td>
               ) : null}
             </tr>
@@ -2042,21 +2112,66 @@ function PeriodsTable({ periods, compact, onEdit, tourTarget }: { periods: Calcu
   );
 }
 
-function PeriodsView({ periods, onEdit, onAdd }: { periods: CalculatedPeriod[]; onEdit: (period: Period) => void; onAdd: () => void }) {
+function PeriodsView({
+  periods,
+  duePayrollPeriods,
+  onEdit,
+  onAdd,
+  onClosePayrollPeriod,
+}: {
+  periods: CalculatedPeriod[];
+  duePayrollPeriods: Period[];
+  onEdit: (period: Period) => void;
+  onAdd: () => void;
+  onClosePayrollPeriod: (period: Period) => void;
+}) {
+  const duePeriod = duePayrollPeriods[0];
+  const duePeriodIds = new Set(duePayrollPeriods.map((period) => period.id));
+  const dueIncome = duePeriod
+    ? asNumber(duePeriod.salary) + asNumber(duePeriod.extraIncome) + asNumber(duePeriod.partnerIncome)
+    : 0;
+  const dueRentReserve = duePeriod ? Math.max(0, -asNumber(duePeriod.rent)) : 0;
+  const duePayday = duePeriod ? paydayForPeriod(duePeriod) : null;
   return (
-    <section className="panel" data-tour="periods-panel">
-      <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="eyebrow">Editable</p>
-          <h3 className="text-2xl font-black text-navy">Plan quincenal</h3>
+    <div className="grid gap-5">
+      {duePeriod ? (
+        <section className="panel border-emerald-200 bg-emerald-50/70">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="eyebrow text-emerald-700">Cierre disponible</p>
+              <h3 className="text-2xl font-black text-navy">{duePeriod.label}</h3>
+              <p className="mt-2 text-sm text-emerald-950">
+                Fecha de pago: {duePayday}. Ahorro sube neto {formatMoney(dueIncome - dueRentReserve)} y renta apartada sube {formatMoney(dueRentReserve)}.
+              </p>
+            </div>
+            <button className="button-primary" type="button" onClick={() => onClosePayrollPeriod(duePeriod)}>
+              <Check size={18} />
+              Cerrar quincena
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="panel" data-tour="periods-panel">
+        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="eyebrow">Editable</p>
+            <h3 className="text-2xl font-black text-navy">Plan quincenal</h3>
+          </div>
+          <button className="button-secondary" type="button" onClick={onAdd} data-tour="periods-add">
+            <Plus size={18} />
+            Agregar siguiente
+          </button>
         </div>
-        <button className="button-secondary" type="button" onClick={onAdd} data-tour="periods-add">
-          <Plus size={18} />
-          Agregar quincena
-        </button>
-      </div>
-      <PeriodsTable periods={periods} onEdit={onEdit} tourTarget="periods-table" />
-    </section>
+        <PeriodsTable
+          periods={periods}
+          duePeriodIds={duePeriodIds}
+          onEdit={onEdit}
+          onClosePayrollPeriod={onClosePayrollPeriod}
+          tourTarget="periods-table"
+        />
+      </section>
+    </div>
   );
 }
 
@@ -2519,6 +2634,7 @@ function SettingsView({
   onPullSync,
   onCheckUpdate,
   onApplyUpdate,
+  onResetRentReserve,
 }: {
   state: AppState;
   syncDraft: AppState["sync"];
@@ -2536,6 +2652,7 @@ function SettingsView({
   onPullSync: () => void;
   onCheckUpdate: () => void;
   onApplyUpdate: () => void;
+  onResetRentReserve: () => void;
 }) {
   const settings = state.settings;
   const updateBusy = pwaStatus === "checking" || pwaStatus === "activating" || pwaStatus === "reloading";
@@ -2581,6 +2698,23 @@ function SettingsView({
           Guardar ajustes
         </button>
       </form>
+
+      <section className="panel">
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="eyebrow">Renta</p>
+            <h3 className="text-2xl font-black text-navy">Apartado de renta</h3>
+            <p className="mt-2 text-sm text-slate-500">
+              Usa esto cuando ya pagaste la renta con el dinero separado fuera del ahorro.
+            </p>
+          </div>
+          <span className="pill">{formatMoney(settings.rentReserve)}</span>
+        </div>
+        <button className="button-secondary" type="button" onClick={onResetRentReserve} disabled={settings.rentReserve <= 0}>
+          <Check size={18} />
+          Renta pagada
+        </button>
+      </section>
 
       <section className="panel" data-tour="settings-sync">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -3059,6 +3193,11 @@ function PeriodModal({
       <div className="max-h-[85dvh] overflow-y-auto p-6">
         <p className="eyebrow">Editar</p>
         <h3 className="mt-2 text-2xl font-black text-navy">Quincena</h3>
+        {period.closedAt ? (
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+            Cerrada el {period.closedAt}. Se aplicaron {formatMoney(period.appliedIncome || 0)} al ingreso y {formatMoney(period.appliedRentReserve || 0)} al apartado de renta.
+          </div>
+        ) : null}
         <div className="mt-5 grid gap-3">
           <Field label="Quincena"><input className="input" value={period.label} onChange={(event) => update({ label: event.target.value })} /></Field>
           <Field label="Rango / nota"><textarea className="input min-h-24" value={period.note} onChange={(event) => update({ note: event.target.value })} /></Field>

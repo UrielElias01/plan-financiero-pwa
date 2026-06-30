@@ -10,6 +10,7 @@
     "preview": "vite preview --configLoader native --host 127.0.0.1 --port 4173",
     "check": "tsc -b && vite build --configLoader native",
     "check:private": "tsx ../tools/verify-pwa-calculations.mjs",
+    "check:rollover": "tsx ../tools/verify-period-rollover.mjs",
     "check:sync": "node ../tools/verify-sync-worker.mjs"
   },
   "dependencies": {
