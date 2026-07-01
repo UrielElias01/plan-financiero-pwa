@@ -542,6 +542,12 @@ export function normalizeState(input?: Partial<AppState> | null): AppState {
 }
 
 export function calculatePeriodsFor(inputState: AppState): CalculatedPeriod[] {
+  const baseIndex = inputState.periods.findIndex((period) => !period.closedAt);
+  const currentIndex = baseIndex === -1 ? inputState.periods.length : baseIndex;
+  const closedPrefixNet = sum(inputState.periods.slice(0, currentIndex), (period) =>
+    asNumber(period.appliedIncome) - asNumber(period.appliedRentReserve),
+  );
+  let historical = inputState.settings.currentSavings - closedPrefixNet;
   let running = inputState.settings.currentSavings;
   const recurringEffects = buildRecurringEffects(inputState);
   return inputState.periods.map((period, index) => {
@@ -549,8 +555,13 @@ export function calculatePeriodsFor(inputState: AppState): CalculatedPeriod[] {
     const income = period.salary + period.extraIncome + period.partnerIncome;
     const cashExpenses = period.rent + period.debitServices + recurring.debitServices;
     const cardPayment = period.cardPayment + recurring.cardPayment;
-    const flow = index === 0 ? 0 : income + cashExpenses + cardPayment;
-    running = index === 0 ? inputState.settings.currentSavings : running + flow;
+    const flow = index <= currentIndex || period.closedAt ? 0 : income + cashExpenses + cardPayment;
+    const savings = index < currentIndex ? historical : index === currentIndex ? running : running + flow;
+    if (index < currentIndex) {
+      historical += asNumber(period.appliedIncome) - asNumber(period.appliedRentReserve);
+    } else {
+      running = savings;
+    }
     const creditCharges = period.foodCredit + period.chatGptCredit + recurring.creditCharges;
     return {
       ...period,
@@ -559,7 +570,7 @@ export function calculatePeriodsFor(inputState: AppState): CalculatedPeriod[] {
       cardPayment,
       flow,
       creditCharges,
-      savings: running,
+      savings,
     };
   });
 }

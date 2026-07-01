@@ -48,6 +48,8 @@ Reglas:
 
 La renta apartada vive fuera del ahorro. Cuando se paga la renta con ese dinero separado, `Ajustes > Apartado de renta > Renta pagada` pone `settings.rentReserve` en cero sin tocar `currentSavings`.
 
+Cuando hay quincenas cerradas al inicio del plan, `settings.currentSavings` se usa como base de la primera quincena abierta. Las quincenas cerradas quedan como historial y no vuelven a anclar la proyeccion.
+
 ## Movimientos
 
 ### Efectivo / debito

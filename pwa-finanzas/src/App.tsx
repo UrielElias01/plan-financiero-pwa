@@ -1876,6 +1876,7 @@ function Dashboard({
   onNavigate: (view: ViewId) => void;
   fileInputRef: RefObject<HTMLInputElement>;
 }) {
+  const activePeriod = periods.find((period) => !period.closedAt) || periods[0];
   return (
     <div className="grid gap-5">
       <section className="relative overflow-hidden rounded-[1.6rem] bg-gradient-to-br from-navy via-ocean to-teal p-4 text-white shadow-glow sm:p-6 md:rounded-[2rem] md:p-8" data-tour="dashboard-hero">
@@ -1900,7 +1901,7 @@ function Dashboard({
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5" data-tour="dashboard-metrics">
         <MetricCard label="Ahorro actual" value={formatMoney(state.settings.currentSavings)} note={`Renta apartada: ${formatMoney(state.settings.rentReserve)}`} icon={WalletCards} />
-        <MetricCard label="Tras 1a julio" value={formatMoney(periods.find((period) => period.id === "2026-07-h1")?.savings || 0)} note="Sueldo del 30 jun aplicado" icon={CalendarClock} />
+        <MetricCard label="Quincena activa" value={formatMoney(activePeriod?.savings || 0)} note={activePeriod?.label || "Sin quincena"} icon={CalendarClock} />
         <MetricCard label="Pago TDC julio" value={formatMoney(Math.abs(periods.find((period) => period.id === "2026-07-h2")?.cardPayment || 0))} note="Estimado al 25 jul" icon={CreditCard} />
         <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Total ocupado" icon={CreditCard} />
         <MetricCard label="Cierre proyectado" value={formatMoney(periods.at(-1)?.savings || 0)} note="Noviembre 2026" icon={ChartSpline} />

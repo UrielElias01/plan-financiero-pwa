@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { closePeriodFor, duePayrollPeriodsFor } from "../pwa-finanzas/src/lib/calculations.ts";
+import { calculatePeriodsFor, closePeriodFor, duePayrollPeriodsFor } from "../pwa-finanzas/src/lib/calculations.ts";
 import { cloneSeed } from "../pwa-finanzas/src/lib/seed.ts";
 
 const state = cloneSeed();
@@ -59,6 +59,10 @@ assert.equal(result.state.periods.find((period) => period.id === "2026-06-h2")?.
 assert.equal(result.state.periods.find((period) => period.id === "2026-06-h2")?.appliedIncome, 8000);
 assert.equal(result.state.periods.at(-1)?.id, "2026-08-h1");
 assert.equal(result.state.periods.at(-1)?.salary, 8000);
+
+const calculated = calculatePeriodsFor(result.state);
+assert.equal(calculated.find((period) => period.id === "2026-06-h2")?.savings, 100);
+assert.equal(calculated.find((period) => period.id === "2026-07-h1")?.savings, 6350);
 
 const nextDue = duePayrollPeriodsFor(result.state, "2026-07-15");
 assert.equal(nextDue[0].id, "2026-07-h1");
