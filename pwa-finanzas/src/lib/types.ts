@@ -26,6 +26,7 @@ export type Period = {
   rent: number;
   debitServices: number;
   foodCredit: number;
+  otherCredit: number;
   chatGptCredit: number;
   cardPayment: number;
   lockedBase?: boolean;

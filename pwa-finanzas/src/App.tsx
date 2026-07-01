@@ -1194,6 +1194,7 @@ export function App() {
       rent: -(state.settings.monthlyRent / 2),
       debitServices: 0,
       foodCredit: state.settings.defaultFood,
+      otherCredit: 0,
       chatGptCredit: 0,
       cardPayment: 0,
     };
@@ -2734,7 +2735,7 @@ function SettingsView({
           <Field label="Renta apartada fuera del ahorro"><input className="input" name="rentReserve" type="number" step="0.01" defaultValue={settings.rentReserve} /></Field>
           <Field label="Sueldo quincenal"><input className="input" name="salary" type="number" step="0.01" defaultValue={settings.salary} /></Field>
           <Field label="Renta mensual"><input className="input" name="monthlyRent" type="number" step="0.01" defaultValue={settings.monthlyRent} /></Field>
-          <Field label="Cargos TDC por defecto"><input className="input" name="defaultFood" type="number" step="0.01" defaultValue={settings.defaultFood} /></Field>
+          <Field label="Comida TDC por defecto"><input className="input" name="defaultFood" type="number" step="0.01" defaultValue={settings.defaultFood} /></Field>
           <Field label="ChatGPT mensual TDC"><input className="input" name="chatGpt" type="number" step="0.01" defaultValue={settings.chatGpt} /></Field>
           <Field label="Dia de corte TDC"><input className="input" name="cutoffDay" type="number" min="1" max="31" defaultValue={settings.cutoffDay} /></Field>
           <Field label="Dia limite pago TDC"><input className="input" name="dueDay" type="number" min="1" max="31" defaultValue={settings.dueDay} /></Field>
@@ -3268,7 +3269,8 @@ function PeriodModal({
             <Field label="Ingreso pareja"><input className="input" value={period.partnerIncome} onChange={(event) => update({ partnerIncome: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
             <Field label="Renta / apartado"><input className="input" value={period.rent} onChange={(event) => update({ rent: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
             <Field label="Servicios debito"><input className="input" value={period.debitServices} onChange={(event) => update({ debitServices: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
-            <Field label="Cargos TDC"><input className="input" value={period.foodCredit} onChange={(event) => update({ foodCredit: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
+            <Field label="Comida TDC"><input className="input" value={period.foodCredit} onChange={(event) => update({ foodCredit: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
+            <Field label="Otros cargos TDC"><input className="input" value={period.otherCredit} onChange={(event) => update({ otherCredit: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
             <Field label="ChatGPT TDC"><input className="input" value={period.chatGptCredit} onChange={(event) => update({ chatGptCredit: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
             <Field label="Pago tarjeta"><input className="input" value={period.cardPayment} onChange={(event) => update({ cardPayment: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
           </div>

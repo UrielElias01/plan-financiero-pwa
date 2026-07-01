@@ -36,6 +36,15 @@ function positiveAmount(value: unknown): number {
   return Math.max(0, asNumber(value));
 }
 
+function normalizedSearchText(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function isFoodCreditTransaction(transaction: Transaction): boolean {
+  const text = normalizedSearchText(`${transaction.category} ${transaction.description}`);
+  return ["comida", "mandado", "super", "supermercado", "despensa"].some((keyword) => text.includes(keyword));
+}
+
 function almostEqual(left: number, right: number): boolean {
   return Math.abs(left - right) < 0.01;
 }
@@ -189,6 +198,7 @@ function estimatedPeriodFor(inputState: AppState, parts: PeriodDateParts): Perio
     rent: -(inputState.settings.monthlyRent / 2),
     debitServices: 0,
     foodCredit: inputState.settings.defaultFood,
+    otherCredit: 0,
     chatGptCredit: 0,
     cardPayment: 0,
   };
@@ -439,7 +449,7 @@ function creditActivityThrough(
     const periodCreditCharges =
       "creditCharges" in period
         ? positiveAmount(period.creditCharges)
-        : positiveAmount(period.foodCredit) + positiveAmount(period.chatGptCredit);
+        : positiveAmount(period.foodCredit) + positiveAmount(period.otherCredit) + positiveAmount(period.chatGptCredit);
     return positiveAmount(periodCreditCharges - (transactionsByPeriod.get(period.id) || 0));
   });
 
@@ -472,6 +482,28 @@ function normalizeRecurringItems(input: unknown): AppState["recurring"] {
       day: Math.min(31, Math.max(1, asNumber(recurring.day, 1))),
       method: recurring.method === "credit" ? "credit" : "debit",
       active: typeof recurring.active === "boolean" ? recurring.active : true,
+    };
+  });
+}
+
+function normalizePeriods(input: unknown, settings: AppState["settings"]): Period[] {
+  const source = Array.isArray(input) ? input : structuredClone(seedState.periods);
+  return source.map((item) => {
+    const period = item as Period;
+    const rawFoodCredit = asNumber(period.foodCredit);
+    const hasOtherCredit = "otherCredit" in period;
+    const defaultFood = positiveAmount(settings.defaultFood);
+    const shouldSplitLegacyCredit = !hasOtherCredit && defaultFood > 0 && rawFoodCredit > defaultFood;
+
+    return {
+      ...period,
+      foodCredit: shouldSplitLegacyCredit ? defaultFood : rawFoodCredit,
+      otherCredit: hasOtherCredit
+        ? asNumber(period.otherCredit)
+        : shouldSplitLegacyCredit
+          ? rawFoodCredit - defaultFood
+          : 0,
+      chatGptCredit: asNumber(period.chatGptCredit),
     };
   });
 }
@@ -546,7 +578,7 @@ export function normalizeState(input?: Partial<AppState> | null): AppState {
     ...structuredClone(seedState),
     ...input,
     settings,
-    periods: Array.isArray(input?.periods) ? input.periods : structuredClone(seedState.periods),
+    periods: normalizePeriods(input?.periods, settings),
     recurring: normalizeRecurringItems(input?.recurring),
     transactions: Array.isArray(input?.transactions) ? input.transactions : [],
     cardCalendar: Array.isArray(input?.cardCalendar)
@@ -590,7 +622,7 @@ export function calculatePeriodsFor(inputState: AppState): CalculatedPeriod[] {
     } else {
       running = savings;
     }
-    const creditCharges = period.foodCredit + period.chatGptCredit + recurring.creditCharges;
+    const creditCharges = period.foodCredit + period.otherCredit + period.chatGptCredit + recurring.creditCharges;
     return {
       ...period,
       income,
@@ -707,7 +739,11 @@ export function applyTransactionToPeriods(periods: Period[], transaction: Transa
   const creditPayment = transaction.method === "credit" ? 0 : -amount;
 
   if (transaction.method === "credit") {
-    period.foodCredit += direction * amount;
+    if (isFoodCreditTransaction(transaction)) {
+      period.foodCredit += direction * amount;
+    } else {
+      period.otherCredit += direction * amount;
+    }
     const schedule = transaction.paymentSchedule || [];
     for (const payment of schedule) {
       const paymentPeriod = next.find((entry) => entry.id === payment.periodId);

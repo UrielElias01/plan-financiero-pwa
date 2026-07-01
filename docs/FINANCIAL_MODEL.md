@@ -12,7 +12,7 @@ Este documento describe las reglas que usa la PWA para convertir quincenas, movi
 - `rentReserve`: dinero separado para renta; se muestra aparte y no se mezcla con ahorro.
 - `salary`: sueldo quincenal esperado.
 - `monthlyRent`: renta mensual usada como referencia.
-- `defaultFood`: cargo promedio de comida/TDC.
+- `defaultFood`: cargo promedio de comida en TDC.
 - `chatGpt`: cargo mensual de ChatGPT en tarjeta.
 - `previousCardDebt`: adeudo previo de tarjeta antes de movimientos nuevos.
 - `previousCardPayment`: pago de tarjeta ya aplicado contra el adeudo previo.
@@ -28,7 +28,7 @@ Cada `Period` representa una quincena. Los importes que salen de dinero real se 
 - `salary`, `extraIncome`, `partnerIncome` suman.
 - `rent` y `debitServices` restan.
 - `cardPayment` resta cuando llega el pago de tarjeta.
-- `foodCredit` y `chatGptCredit` son cargos de tarjeta; no bajan el ahorro al capturarse.
+- `foodCredit`, `otherCredit` y `chatGptCredit` son cargos de tarjeta; no bajan el ahorro al capturarse.
 
 La primera quincena es la base actual del plan. Su ahorro es `settings.currentSavings`; no se recalcula completa para evitar doble conteo de gastos que ya ocurrieron antes de importar o actualizar el respaldo.
 
@@ -89,6 +89,7 @@ Un movimiento con metodo `credit` representa una compra cargada a TDC.
 Reglas:
 
 - La compra aumenta cargos de tarjeta de la quincena donde se capturo.
+- Si la categoria o descripcion contiene comida, mandado, super, supermercado o despensa, aumenta `foodCredit`; las demas compras TDC aumentan `otherCredit`.
 - No baja el ahorro inmediatamente.
 - Aumenta `usedCreditBalance` por el monto completo de la compra, incluso si es MSI.
 - Genera un calendario de pago segun `installments`.
@@ -174,7 +175,7 @@ Convencion usada en la app:
 - ingresos positivos;
 - salidas de efectivo/debito negativas;
 - pagos de tarjeta negativos;
-- compras de tarjeta positivas dentro de `foodCredit`/`chatGptCredit`, porque son cargos antes de pagarse;
+- compras de tarjeta positivas dentro de `foodCredit`/`otherCredit`/`chatGptCredit`, porque son cargos antes de pagarse;
 - el saldo utilizado de TDC se muestra como numero positivo para lectura humana.
 
 ## Donde tocar si cambia la logica
