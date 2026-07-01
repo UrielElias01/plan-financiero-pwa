@@ -44,6 +44,8 @@ Reglas:
 - La renta de esa quincena (`rent`, guardada negativa) se resta del ahorro y se suma a `settings.rentReserve`.
 - Si la quincena base esta vacia, el cierre usa `settings.salary` y la mitad de `settings.monthlyRent`.
 - La quincena queda marcada como cerrada y sus campos de sueldo/renta se ponen en cero para no duplicar la proyeccion.
+- Una quincena cerrada no recibe ediciones, movimientos nuevos ni recurrentes; primero debe reabrirse.
+- Reabrir una quincena revierte el sueldo/renta aplicados al ahorro y al apartado de renta.
 - Si falta la siguiente quincena visible, se agrega usando los supuestos actuales (`salary`, `monthlyRent`, `defaultFood`).
 
 La renta apartada vive fuera del ahorro. Cuando se paga la renta con ese dinero separado, `Ajustes > Apartado de renta > Renta pagada` pone `settings.rentReserve` en cero sin tocar `currentSavings`.

@@ -279,6 +279,32 @@ export function closePeriodFor(
   };
 }
 
+export function reopenPeriodFor(inputState: AppState, periodId: string): AppState {
+  const period = inputState.periods.find((entry) => entry.id === periodId);
+  if (!period?.closedAt) return inputState;
+
+  const appliedIncome = asNumber(period.appliedIncome);
+  const appliedRentReserve = asNumber(period.appliedRentReserve);
+  const reopened: Period = {
+    ...period,
+    closedAt: undefined,
+    appliedIncome: undefined,
+    appliedRentReserve: undefined,
+    salary: period.salary || appliedIncome,
+    rent: period.rent || (appliedRentReserve ? -appliedRentReserve : period.rent),
+  };
+
+  return {
+    ...inputState,
+    settings: {
+      ...inputState.settings,
+      currentSavings: inputState.settings.currentSavings - appliedIncome + appliedRentReserve,
+      rentReserve: positiveAmount(inputState.settings.rentReserve - appliedRentReserve),
+    },
+    periods: inputState.periods.map((entry) => (entry.id === period.id ? reopened : entry)),
+  };
+}
+
 function recurringHalf(day: number): 1 | 2 {
   return day <= 15 ? 1 : 2;
 }
@@ -345,6 +371,7 @@ function buildRecurringEffects(inputState: AppState): Map<string, RecurringEffec
   const effects = new Map<string, RecurringEffects>();
 
   for (const period of inputState.periods) {
+    if (period.closedAt) continue;
     const totals = recurringTotalsForPeriod(inputState, period);
     const missingDebit = positiveAmount(totals.debit - positiveAmount(-period.debitServices));
     const missingCredit = positiveAmount(totals.credit - positiveAmount(period.chatGptCredit));
@@ -470,6 +497,7 @@ export function materializeDueRecurringTransactions(
     if (!item.active || positiveAmount(item.amount) <= 0) continue;
 
     for (const period of inputState.periods) {
+      if (period.closedAt) continue;
       const recurringDate = recurringDateForPeriod(period, item);
       if (!recurringDate || recurringDate <= since || recurringDate > asOf) continue;
 
@@ -640,13 +668,14 @@ export function calculateCardDebtFor(
 }
 
 function isCardPaymentPeriod(period: Period): boolean {
-  return period.label.toLowerCase().startsWith("2a ");
+  return !period.closedAt && period.label.toLowerCase().startsWith("2a ");
 }
 
 export function buildPaymentScheduleFor(inputState: AppState, transaction: Transaction): PaymentScheduleItem[] {
   if (transaction.method !== "credit") return [];
   const selectedIndex = inputState.periods.findIndex((period) => period.id === transaction.periodId);
   if (selectedIndex < 0) return [];
+  if (inputState.periods[selectedIndex].closedAt) return [];
   const paymentPeriods = inputState.periods.slice(selectedIndex + 1).filter(isCardPaymentPeriod);
   const installmentCount = Math.max(1, asNumber(transaction.installments, 1));
   const usablePeriods = paymentPeriods.slice(0, installmentCount);
@@ -671,7 +700,7 @@ export function applyTransactionToPeriods(periods: Period[], transaction: Transa
 
   const next = periods.map((period) => ({ ...period }));
   const period = next.find((entry) => entry.id === transaction.periodId);
-  if (!period) return next;
+  if (!period || period.closedAt) return next;
 
   const amount = asNumber(transaction.amount);
   const sharedIncome = transaction.method !== "card_payment" && transaction.shared ? amount / 2 : 0;
@@ -682,7 +711,7 @@ export function applyTransactionToPeriods(periods: Period[], transaction: Transa
     const schedule = transaction.paymentSchedule || [];
     for (const payment of schedule) {
       const paymentPeriod = next.find((entry) => entry.id === payment.periodId);
-      if (paymentPeriod) paymentPeriod.cardPayment -= direction * payment.amount;
+      if (paymentPeriod && !paymentPeriod.closedAt) paymentPeriod.cardPayment -= direction * payment.amount;
     }
   } else if (transaction.method === "cash") {
     period.debitServices += direction * creditPayment;
@@ -694,6 +723,7 @@ export function applyTransactionToPeriods(periods: Period[], transaction: Transa
 
 export function applyTransactionToState(inputState: AppState, transaction: Transaction, direction = 1): AppState {
   const selectedIndex = inputState.periods.findIndex((period) => period.id === transaction.periodId);
+  if (inputState.periods[selectedIndex]?.closedAt) return inputState;
   const settings = { ...inputState.settings };
   const amount = positiveAmount(transaction.amount);
 

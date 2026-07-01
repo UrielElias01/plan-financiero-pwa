@@ -58,6 +58,7 @@ import {
   materializeDueRecurringTransactions,
   normalizeState,
   paydayForPeriod,
+  reopenPeriodFor,
   signedTone,
 } from "./lib/calculations";
 import { exportMonthlyCsv, exportStateJson, readJsonFile } from "./lib/files";
@@ -592,6 +593,10 @@ function getField(form: HTMLFormElement, key: string): string {
 
 function getPeriodLabel(periods: Period[], id: string): string {
   return periods.find((period) => period.id === id)?.label || "Sin quincena";
+}
+
+function isClosedPeriod(state: AppState, periodId: string): boolean {
+  return Boolean(state.periods.find((period) => period.id === periodId)?.closedAt);
 }
 
 function transactionMethodLabel(method: Transaction["method"]): string {
@@ -1163,6 +1168,10 @@ export function App() {
 
   async function savePeriod() {
     if (!periodDraft) return;
+    if (periodDraft.closedAt) {
+      showToast("Reabre la quincena antes de editarla", "danger");
+      return;
+    }
     await commit(
       {
         ...state,
@@ -1210,6 +1219,17 @@ export function App() {
     await commit(result.state, result.nextPeriod ? "Quincena cerrada y siguiente agregada" : "Quincena cerrada");
   }
 
+  async function reopenPayrollPeriod(period: Period) {
+    if (!period.closedAt) return;
+    const confirmed = await confirmAction({
+      title: `Reabrir ${period.label}`,
+      message: "Se revertira el sueldo/renta aplicados y esta quincena volvera a poder editarse.",
+      confirmText: "Reabrir quincena",
+    });
+    if (!confirmed) return;
+    await commit(reopenPeriodFor(state, period.id), "Quincena reabierta");
+  }
+
   async function resetRentReserve() {
     const rentReserve = Math.max(0, asNumber(state.settings.rentReserve));
     if (rentReserve <= 0) {
@@ -1246,6 +1266,14 @@ export function App() {
       recurringDate: transactionDraft?.recurringDate,
       skipPlanImpact: transactionDraft?.skipPlanImpact,
     };
+    if (!transactionBase.periodId) {
+      showToast("Necesitas una quincena abierta para guardar movimientos", "danger");
+      return;
+    }
+    if (isClosedPeriod(state, transactionBase.periodId) || (transactionDraft && isClosedPeriod(state, transactionDraft.periodId))) {
+      showToast("Reabre la quincena antes de cambiar sus movimientos", "danger");
+      return;
+    }
     const baseState = transactionDraft
       ? applyTransactionToState(
           {
@@ -1277,6 +1305,10 @@ export function App() {
   }
 
   function editTransaction(transaction: Transaction) {
+    if (isClosedPeriod(state, transaction.periodId)) {
+      showToast("Reabre la quincena antes de editar ese movimiento", "danger");
+      return;
+    }
     setTransactionDraft({ ...transaction });
     setView("transactions");
     window.setTimeout(() => document.querySelector<HTMLElement>('[data-tour="transactions-form"]')?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
@@ -1287,6 +1319,10 @@ export function App() {
   }
 
   async function deleteTransaction(transaction: Transaction) {
+    if (isClosedPeriod(state, transaction.periodId)) {
+      showToast("Reabre la quincena antes de borrar ese movimiento", "danger");
+      return;
+    }
     const confirmed = await confirmAction({
       title: "Borrar movimiento",
       message: "Se quitara el movimiento y se recalculara la quincena relacionada.",
@@ -1309,6 +1345,10 @@ export function App() {
   }
 
   async function registerCardPayment(period: CalculatedPeriod) {
+    if (period.closedAt) {
+      showToast("Reabre la quincena antes de registrar pagos TDC", "danger");
+      return;
+    }
     const amount = Math.max(0, asNumber(-period.cardPayment));
     if (amount <= 0) {
       showToast("Esta quincena no tiene pago TDC pendiente", "danger");
@@ -1700,6 +1740,7 @@ export function App() {
                 onEdit={openPeriod}
                 onAdd={addPeriod}
                 onClosePayrollPeriod={closePayrollPeriod}
+                onReopenPayrollPeriod={reopenPayrollPeriod}
               />
             ) : null}
             {view === "transactions" ? (
@@ -2055,6 +2096,7 @@ function PeriodsTable({
   duePeriodIds,
   onEdit,
   onClosePayrollPeriod,
+  onReopenPayrollPeriod,
   tourTarget,
 }: {
   periods: CalculatedPeriod[];
@@ -2062,6 +2104,7 @@ function PeriodsTable({
   duePeriodIds?: Set<string>;
   onEdit?: (period: Period) => void;
   onClosePayrollPeriod?: (period: Period) => void;
+  onReopenPayrollPeriod?: (period: Period) => void;
   tourTarget?: string;
 }) {
   return (
@@ -2095,14 +2138,21 @@ function PeriodsTable({
                 <td className="table-cell">
                   <div className="flex justify-end gap-2">
                     {period.closedAt ? <span className="pill">Cerrada</span> : null}
+                    {period.closedAt && onReopenPayrollPeriod ? (
+                      <button className="button-secondary px-3 py-2" type="button" onClick={() => onReopenPayrollPeriod(period)}>
+                        Reabrir
+                      </button>
+                    ) : null}
                     {!period.closedAt && duePeriodIds?.has(period.id) && onClosePayrollPeriod ? (
                       <button className="button-primary px-3 py-2" type="button" onClick={() => onClosePayrollPeriod(period)}>
                         Cerrar
                       </button>
                     ) : null}
-                    <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(period)}>
-                      Editar
-                    </button>
+                    {!period.closedAt ? (
+                      <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(period)}>
+                        Editar
+                      </button>
+                    ) : null}
                   </div>
                 </td>
               ) : null}
@@ -2121,6 +2171,7 @@ function PeriodsView({
   onEdit,
   onAdd,
   onClosePayrollPeriod,
+  onReopenPayrollPeriod,
 }: {
   periods: CalculatedPeriod[];
   state: AppState;
@@ -2128,6 +2179,7 @@ function PeriodsView({
   onEdit: (period: Period) => void;
   onAdd: () => void;
   onClosePayrollPeriod: (period: Period) => void;
+  onReopenPayrollPeriod: (period: Period) => void;
 }) {
   const duePeriod = duePayrollPeriods[0];
   const duePeriodIds = new Set(duePayrollPeriods.map((period) => period.id));
@@ -2169,6 +2221,7 @@ function PeriodsView({
           duePeriodIds={duePeriodIds}
           onEdit={onEdit}
           onClosePayrollPeriod={onClosePayrollPeriod}
+          onReopenPayrollPeriod={onReopenPayrollPeriod}
           tourTarget="periods-table"
         />
       </section>
@@ -2192,6 +2245,9 @@ function TransactionsView({
   onClearDraft: () => void;
 }) {
   const transactions = [...state.transactions].reverse();
+  const openPeriods = state.periods.filter((period) => !period.closedAt);
+  const draftPeriodOpen = Boolean(draft?.periodId && openPeriods.some((period) => period.id === draft.periodId));
+  const selectedPeriodId = draftPeriodOpen ? draft?.periodId : openPeriods[0]?.id || "";
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(320px,.75fr)_minmax(0,1.25fr)]">
       <form key={draft?.id || "new-transaction"} className="panel self-start" onSubmit={onSubmit} data-tour="transactions-form">
@@ -2232,8 +2288,9 @@ function TransactionsView({
           </div>
         </div>
         <Field label="Quincena">
-          <select className="input" name="periodId" defaultValue={draft?.periodId || state.periods[0]?.id}>
-            {state.periods.map((period) => (
+          <select className="input" name="periodId" defaultValue={selectedPeriodId} disabled={!openPeriods.length}>
+            {openPeriods.length ? null : <option value="">Sin quincenas abiertas</option>}
+            {openPeriods.map((period) => (
               <option key={period.id} value={period.id}>
                 {period.label}
               </option>
@@ -2273,6 +2330,7 @@ function TransactionsView({
         {transactions.length ? (
           <div className="grid gap-3">
             {transactions.map((transaction) => {
+              const periodClosed = isClosedPeriod(state, transaction.periodId);
               const schedule = transaction.paymentSchedule?.length
                 ? transaction.paymentSchedule
                     .map((payment) => `${getPeriodLabel(state.periods, payment.periodId)}: ${formatMoney(payment.amount)}`)
@@ -2293,10 +2351,11 @@ function TransactionsView({
                   </div>
                   <div className="flex items-center justify-between gap-2 md:justify-end">
                     <span className="pill">{formatMoney(transaction.amount)}</span>
-                    <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(transaction)}>
+                    {periodClosed ? <span className="pill">Histórico</span> : null}
+                    <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(transaction)} disabled={periodClosed}>
                       Editar
                     </button>
-                    <button className="button-ghost px-3 py-2 text-red-700" type="button" onClick={() => onDelete(transaction)}>
+                    <button className="button-ghost px-3 py-2 text-red-700" type="button" onClick={() => onDelete(transaction)} disabled={periodClosed}>
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -3188,6 +3247,7 @@ function PeriodModal({
   onSave: () => void;
 }) {
   if (!period) return null;
+  const readOnly = Boolean(period.closedAt);
   const update = (patch: Partial<Period>) => onChange({ ...period, ...patch });
   return (
     <Modal open={Boolean(period)} onClose={onClose}>
@@ -3200,22 +3260,22 @@ function PeriodModal({
           </div>
         ) : null}
         <div className="mt-5 grid gap-3">
-          <Field label="Quincena"><input className="input" value={period.label} onChange={(event) => update({ label: event.target.value })} /></Field>
-          <Field label="Rango / nota"><textarea className="input min-h-24" value={period.note} onChange={(event) => update({ note: event.target.value })} /></Field>
+          <Field label="Quincena"><input className="input" value={period.label} onChange={(event) => update({ label: event.target.value })} disabled={readOnly} /></Field>
+          <Field label="Rango / nota"><textarea className="input min-h-24" value={period.note} onChange={(event) => update({ note: event.target.value })} disabled={readOnly} /></Field>
           <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Sueldo"><input className="input" value={period.salary} onChange={(event) => update({ salary: asNumber(event.target.value) })} type="number" step="0.01" /></Field>
-            <Field label="Ingreso extra"><input className="input" value={period.extraIncome} onChange={(event) => update({ extraIncome: asNumber(event.target.value) })} type="number" step="0.01" /></Field>
-            <Field label="Ingreso pareja"><input className="input" value={period.partnerIncome} onChange={(event) => update({ partnerIncome: asNumber(event.target.value) })} type="number" step="0.01" /></Field>
-            <Field label="Renta / apartado"><input className="input" value={period.rent} onChange={(event) => update({ rent: asNumber(event.target.value) })} type="number" step="0.01" /></Field>
-            <Field label="Servicios debito"><input className="input" value={period.debitServices} onChange={(event) => update({ debitServices: asNumber(event.target.value) })} type="number" step="0.01" /></Field>
-            <Field label="Cargos TDC"><input className="input" value={period.foodCredit} onChange={(event) => update({ foodCredit: asNumber(event.target.value) })} type="number" step="0.01" /></Field>
-            <Field label="ChatGPT TDC"><input className="input" value={period.chatGptCredit} onChange={(event) => update({ chatGptCredit: asNumber(event.target.value) })} type="number" step="0.01" /></Field>
-            <Field label="Pago tarjeta"><input className="input" value={period.cardPayment} onChange={(event) => update({ cardPayment: asNumber(event.target.value) })} type="number" step="0.01" /></Field>
+            <Field label="Sueldo"><input className="input" value={period.salary} onChange={(event) => update({ salary: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
+            <Field label="Ingreso extra"><input className="input" value={period.extraIncome} onChange={(event) => update({ extraIncome: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
+            <Field label="Ingreso pareja"><input className="input" value={period.partnerIncome} onChange={(event) => update({ partnerIncome: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
+            <Field label="Renta / apartado"><input className="input" value={period.rent} onChange={(event) => update({ rent: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
+            <Field label="Servicios debito"><input className="input" value={period.debitServices} onChange={(event) => update({ debitServices: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
+            <Field label="Cargos TDC"><input className="input" value={period.foodCredit} onChange={(event) => update({ foodCredit: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
+            <Field label="ChatGPT TDC"><input className="input" value={period.chatGptCredit} onChange={(event) => update({ chatGptCredit: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
+            <Field label="Pago tarjeta"><input className="input" value={period.cardPayment} onChange={(event) => update({ cardPayment: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
           </div>
         </div>
         <div className="mt-6 flex justify-end gap-3">
           <button className="button-ghost" type="button" onClick={onClose}>Cancelar</button>
-          <button className="button-primary" type="button" onClick={onSave}>Guardar</button>
+          {readOnly ? null : <button className="button-primary" type="button" onClick={onSave}>Guardar</button>}
         </div>
       </div>
     </Modal>
