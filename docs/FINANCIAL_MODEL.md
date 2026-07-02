@@ -61,7 +61,7 @@ Un movimiento con metodo `cash` representa dinero que ya salio de ahorro o cuent
 Reglas:
 
 - En quincenas futuras, se suma como salida en `debitServices`; el flujo de esa quincena baja el ahorro proyectado.
-- En la primera quincena, tambien ajusta `settings.currentSavings` directamente, porque esa quincena parte del saldo real actual.
+- En la primera quincena abierta, tambien ajusta `settings.currentSavings` directamente, porque esa quincena parte del saldo real actual.
 - Si el movimiento esta marcado como compartido, el impacto personal en la primera quincena es la mitad del monto.
 - Al borrar el movimiento, el ajuste se revierte.
 

@@ -103,6 +103,31 @@ assert.equal(otherPeriod?.foodCredit, 1500);
 assert.equal(otherPeriod?.otherCredit, 450);
 assert.equal(calculatePeriodsFor(otherState).find((period) => period.id === "2026-07-h1")?.creditCharges, 1950);
 
+const cashTransaction = {
+  id: "cash-tx",
+  date: "2026-07-01",
+  description: "Gasto debito",
+  amount: 200,
+  category: "Prueba",
+  method: "cash",
+  periodId: "2026-07-h1",
+  shared: false,
+  installments: 1,
+};
+const cashState = applyTransactionToState(result.state, cashTransaction, 1);
+assert.equal(cashState.settings.currentSavings, 6150);
+const cashDeletedState = applyTransactionToState(cashState, cashTransaction, -1);
+assert.equal(cashDeletedState.settings.currentSavings, 6350);
+
+const manualCardState = {
+  ...result.state,
+  settings: { ...result.state.settings, usedCreditBalance: 1000 },
+};
+const manualCreditState = applyTransactionToState(manualCardState, otherTransaction, 1);
+assert.equal(manualCreditState.settings.usedCreditBalance, 1450);
+const manualCreditDeletedState = applyTransactionToState(manualCreditState, otherTransaction, -1);
+assert.equal(manualCreditDeletedState.settings.usedCreditBalance, 1000);
+
 const legacyPeriod = { ...state.periods[1], foodCredit: 5055 };
 delete legacyPeriod.otherCredit;
 const migrated = normalizeState({

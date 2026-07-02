@@ -210,6 +210,11 @@ export function buildNextPeriodFor(inputState: AppState): Period | null {
   return parts ? estimatedPeriodFor(inputState, nextPeriodParts(parts)) : null;
 }
 
+function currentOpenPeriodIndex(periods: Period[]): number {
+  const firstOpenIndex = periods.findIndex((period) => !period.closedAt);
+  return firstOpenIndex === -1 ? periods.length : firstOpenIndex;
+}
+
 export function paydayForPeriod(period: Period): string | null {
   const parts = periodDateParts(period);
   if (!parts) return null;
@@ -571,7 +576,7 @@ export function materializeDueRecurringTransactions(
   return { state: nextState, added };
 }
 
-export function normalizeState(input?: Partial<AppState> | null): AppState {
+export function normalizeState(input?: Partial<AppState> | null, asOf = defaultToday): AppState {
   const inputSettings = input?.settings || {};
   const settings = { ...seedState.settings, ...inputSettings };
   const normalized = {
@@ -587,7 +592,7 @@ export function normalizeState(input?: Partial<AppState> | null): AppState {
     sync: { ...seedState.sync, ...(input?.sync || {}) },
   } as AppState;
 
-  const autoUsedBalance = calculatedUsedCreditBalance(normalized, calculatePeriodsFor(normalized));
+  const autoUsedBalance = calculatedUsedCreditBalance(normalized, calculatePeriodsFor(normalized), asOf);
   const currentUsedBalance = positiveAmount(settings.usedCreditBalance);
   const shouldSeedUsedBalance =
     !("usedCreditBalance" in inputSettings) ||
@@ -602,8 +607,7 @@ export function normalizeState(input?: Partial<AppState> | null): AppState {
 }
 
 export function calculatePeriodsFor(inputState: AppState): CalculatedPeriod[] {
-  const baseIndex = inputState.periods.findIndex((period) => !period.closedAt);
-  const currentIndex = baseIndex === -1 ? inputState.periods.length : baseIndex;
+  const currentIndex = currentOpenPeriodIndex(inputState.periods);
   const closedPrefixNet = sum(inputState.periods.slice(0, currentIndex), (period) =>
     asNumber(period.appliedIncome) - asNumber(period.appliedRentReserve),
   );
@@ -668,9 +672,10 @@ function scheduledAmountFor(transaction: Transaction): number {
 export function calculateCardDebtFor(
   inputState: AppState,
   periods: CalculatedPeriod[] = calculatePeriodsFor(inputState),
+  asOf = defaultToday,
 ): CardDebtSummary {
   const creditTransactions = inputState.transactions.filter((transaction) => transaction.method === "credit");
-  const paidByPeriod = cardPaymentsByPeriod(inputState);
+  const paidByPeriod = cardPaymentsByPeriod(inputState, asOf);
   const unpaidCardPaymentFor = (period: CalculatedPeriod) =>
     positiveAmount(positiveAmount(-period.cardPayment) - (paidByPeriod.get(period.id) || 0));
   const scheduledPayments = sum(periods, unpaidCardPaymentFor);
@@ -680,7 +685,7 @@ export function calculateCardDebtFor(
   const settingsBalance = baseSettingsBalance(inputState.settings);
   const usedCreditBalance = positiveAmount(inputState.settings.usedCreditBalance);
   const nextPayment = periods.map(unpaidCardPaymentFor).find((payment) => payment > 0) || 0;
-  const calculatedBalance = calculatedUsedCreditBalance(inputState, periods);
+  const calculatedBalance = calculatedUsedCreditBalance(inputState, periods, asOf);
   const trackedBalance = isStaleSeededUsedBalance(inputState.settings, usedCreditBalance, calculatedBalance)
     ? calculatedBalance
     : usedCreditBalance || calculatedBalance;
@@ -781,7 +786,8 @@ export function applyTransactionToState(inputState: AppState, transaction: Trans
     settings.usedCreditBalance = positiveAmount(currentBalance - direction * amount);
   }
 
-  if (transaction.method === "cash" && !transaction.skipPlanImpact && selectedIndex === 0) {
+  const isCurrentOpenPeriod = selectedIndex === currentOpenPeriodIndex(inputState.periods);
+  if (transaction.method === "cash" && !transaction.skipPlanImpact && isCurrentOpenPeriod) {
     const userShare = transaction.shared ? amount / 2 : amount;
     settings.currentSavings -= direction * userShare;
   }
