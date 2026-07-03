@@ -143,6 +143,14 @@ assert.equal(recurringResult.state.settings.currentSavings, 6100);
 assert.equal(recurringResult.state.periods.find((period) => period.id === "2026-07-h1")?.debitServices, -250);
 assert.equal(calculatePeriodsFor(recurringResult.state).find((period) => period.id === "2026-07-h1")?.savings, 6100);
 
+const migratedRecurring = normalizeState({
+  ...result.state,
+  transactions: [{ ...recurringResult.added[0], skipPlanImpact: true }],
+});
+assert.equal(migratedRecurring.transactions[0].skipPlanImpact, false);
+assert.equal(migratedRecurring.settings.currentSavings, 6100);
+assert.equal(migratedRecurring.periods.find((period) => period.id === "2026-07-h1")?.debitServices, -250);
+
 const manualCardState = {
   ...result.state,
   settings: { ...result.state.settings, usedCreditBalance: 1000 },

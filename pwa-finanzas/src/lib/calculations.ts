@@ -513,6 +513,30 @@ function normalizePeriods(input: unknown, settings: AppState["settings"]): Perio
   });
 }
 
+function migrateLegacyDebitRecurringImpacts(inputState: AppState): AppState {
+  let migrated = inputState;
+
+  for (const transaction of inputState.transactions) {
+    if (transaction.method !== "cash" || !transaction.sourceRecurringId || transaction.skipPlanImpact !== true) {
+      continue;
+    }
+
+    const appliedTransaction: Transaction = { ...transaction, skipPlanImpact: false };
+    migrated = applyTransactionToState(
+      {
+        ...migrated,
+        transactions: migrated.transactions.map((entry) =>
+          entry.id === transaction.id ? appliedTransaction : entry,
+        ),
+      },
+      appliedTransaction,
+      1,
+    );
+  }
+
+  return migrated;
+}
+
 export function materializeDueRecurringTransactions(
   inputState: AppState,
   asOf = defaultToday,
@@ -603,7 +627,7 @@ export function normalizeState(input?: Partial<AppState> | null, asOf = defaultT
     normalized.settings.usedCreditBalance = autoUsedBalance;
   }
 
-  return normalized;
+  return migrateLegacyDebitRecurringImpacts(normalized);
 }
 
 export function calculatePeriodsFor(inputState: AppState): CalculatedPeriod[] {
