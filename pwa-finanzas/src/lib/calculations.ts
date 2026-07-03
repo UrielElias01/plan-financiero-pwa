@@ -553,7 +553,7 @@ export function materializeDueRecurringTransactions(
         installments: 1,
         sourceRecurringId: item.id,
         recurringDate,
-        skipPlanImpact: true,
+        skipPlanImpact: item.method === "credit",
       };
       const transaction = {
         ...transactionBase,

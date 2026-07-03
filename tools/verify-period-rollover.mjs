@@ -5,6 +5,7 @@ import {
   calculatePeriodsFor,
   closePeriodFor,
   duePayrollPeriodsFor,
+  materializeDueRecurringTransactions,
   normalizeState,
   reopenPeriodFor,
 } from "../pwa-finanzas/src/lib/calculations.ts";
@@ -118,6 +119,29 @@ const cashState = applyTransactionToState(result.state, cashTransaction, 1);
 assert.equal(cashState.settings.currentSavings, 6150);
 const cashDeletedState = applyTransactionToState(cashState, cashTransaction, -1);
 assert.equal(cashDeletedState.settings.currentSavings, 6350);
+
+const recurringState = {
+  ...result.state,
+  recurringLastAppliedDate: "2026-07-01",
+  recurring: [
+    {
+      id: "debit-recurring",
+      name: "Servicio debito",
+      amount: 250,
+      day: 2,
+      method: "debit",
+      active: true,
+    },
+  ],
+};
+const recurringResult = materializeDueRecurringTransactions(recurringState, "2026-07-02");
+assert.equal(recurringResult.added.length, 1);
+assert.equal(recurringResult.added[0].date, "2026-07-02");
+assert.equal(recurringResult.added[0].method, "cash");
+assert.equal(recurringResult.added[0].skipPlanImpact, false);
+assert.equal(recurringResult.state.settings.currentSavings, 6100);
+assert.equal(recurringResult.state.periods.find((period) => period.id === "2026-07-h1")?.debitServices, -250);
+assert.equal(calculatePeriodsFor(recurringResult.state).find((period) => period.id === "2026-07-h1")?.savings, 6100);
 
 const manualCardState = {
   ...result.state,

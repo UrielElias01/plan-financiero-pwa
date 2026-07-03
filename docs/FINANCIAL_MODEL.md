@@ -122,7 +122,8 @@ Los recurrentes activos se proyectan en la quincena que corresponde a su dia:
 - Los recurrentes de credito solo se agregan si `chatGptCredit` no cubre ya ese monto.
 - Al abrir la app, los recurrentes vencidos desde la ultima revision se materializan como movimientos reales.
 - Si no existe una revision previa, solo se revisa el dia actual para evitar meter historial viejo de golpe.
-- Los recurrentes materializados no vuelven a modificar la quincena si ya estaba proyectada; los de tarjeta si suben `usedCreditBalance`.
+- Los recurrentes de debito materializados aplican el gasto real en la quincena abierta y descuentan `currentSavings`; al hacerlo cubren la proyeccion para no duplicarla.
+- Los recurrentes de tarjeta materializados suben `usedCreditBalance`, pero no duplican los cargos de la quincena si ya estaban proyectados.
 
 Esta regla evita duplicar respaldos antiguos donde las suscripciones ya estaban capturadas manualmente en las quincenas.
 
