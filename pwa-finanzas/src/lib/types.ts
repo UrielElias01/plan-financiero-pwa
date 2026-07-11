@@ -33,6 +33,7 @@ export type Period = {
   closedAt?: string;
   appliedIncome?: number;
   appliedRentReserve?: number;
+  closingSavings?: number;
 };
 
 export type RecurringItem = {
@@ -55,7 +56,7 @@ export type Transaction = {
   description: string;
   amount: number;
   category: string;
-  method: "credit" | "cash" | "card_payment";
+  method: "income" | "credit" | "cash" | "card_payment";
   periodId: string;
   shared: boolean;
   installments: number;
@@ -63,6 +64,8 @@ export type Transaction = {
   sourceRecurringId?: string;
   recurringDate?: string;
   skipPlanImpact?: boolean;
+  affectsSavings?: boolean;
+  rentReserveAmount?: number;
 };
 
 export type CardCalendarEntry = {

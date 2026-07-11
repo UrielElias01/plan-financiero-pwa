@@ -4,13 +4,13 @@ PWA offline-first para administrar un plan financiero quincenal. El frontend est
 
 ## Funcionalidad
 
-- Plan quincenal editable.
-- Cierre de quincena con aplicacion de sueldo, apartado de renta y alta de la siguiente quincena estimada.
-- Movimientos de efectivo y tarjeta.
+- Resumen quincenal alimentado por movimientos reales.
+- Cierre de quincena sin cambios de saldo y alta del siguiente periodo.
+- Movimientos de ingreso, efectivo, debito, tarjeta y pago TDC.
 - Gastos recurrentes.
 - Calendario de pagos de tarjeta y MSI.
 - Saldo utilizado de tarjeta, separado del pago al corte.
-- Pagos en efectivo/debito descontados del ahorro cuando se registran en la quincena base.
+- Pagos en efectivo/debito y pagos TDC descontados del ahorro al registrarse.
 - Reportes mensuales con graficas.
 - Manual dinamico con ayuda contextual por pantalla.
 - Tours guiados por modulo con foco visual, oscurecimiento, flechas y pasos detallados.
@@ -30,14 +30,15 @@ El boton `Tour` inicia una guia flotante que cambia de pantalla conforme avanzas
 
 ## Reglas financieras importantes
 
-- La primera quincena parte de `Ahorro actual`; no se recalcula completa para evitar doble conteo.
-- Si agregas un movimiento de `Efectivo / debito` en esa primera quincena, la app baja `Ahorro actual` porque ese dinero sale de ahorro/debito.
-- Si el debito fue compartido, el ajuste directo al ahorro usa solo tu mitad.
+- Todos los ingresos se registran en `Movimientos` y suman al ahorro.
+- `Nomina` aparta automaticamente la mitad de la renta mensual configurada.
+- `Efectivo / debito` baja `Ahorro actual` porque ese dinero ya salio.
+- Un reembolso o aportacion se registra como ingreso al recibirlo.
 - Una compra con `Tarjeta de credito` no baja el ahorro al capturarla; se agenda como pago futuro de TDC.
 - La pantalla `Tarjeta` muestra `Pago al corte` y `Saldo utilizado TDC`. Ese saldo debe coincidir con el credito usado que muestra el banco; en Ajustes puedes capturarlo directamente.
-- Cuando llegue la fecha de pago, usa `Quincenas > Cerrar quincena` para sumar el sueldo real al ahorro, separar la renta y evitar doble conteo en la proyeccion.
+- `Quincenas > Cerrar quincena` solo archiva el periodo; no cambia ahorro, renta ni tarjeta.
 - Cuando ya pagaste la renta con el dinero separado, usa `Ajustes > Apartado de renta > Renta pagada`.
-- Los campos avanzados de `Ajustes > Base de tarjeta` permiten corregir saldo previo, pagos aplicados, puntos y saldos no recurrentes.
+- Los recurrentes solo cambian saldos al llegar su fecha; si editas su dia o monto, la app revierte el movimiento automatico anterior.
 
 La documentacion completa del modelo esta en `../docs/FINANCIAL_MODEL.md`.
 

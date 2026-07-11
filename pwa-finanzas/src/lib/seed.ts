@@ -14,7 +14,7 @@ export function dateInputValue(date = new Date()): string {
 export const today = dateInputValue();
 
 export const seedState: AppState = {
-  version: 1,
+  version: 2,
   updatedAt: new Date().toISOString(),
   settings: {
     currentSavings: 0,

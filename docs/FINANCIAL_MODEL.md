@@ -1,188 +1,101 @@
 # Modelo financiero
 
-Este documento describe las reglas que usa la PWA para convertir quincenas, movimientos y compras de tarjeta en ahorro proyectado y saldo utilizado de TDC.
+La PWA usa los movimientos como fuente de verdad. Las quincenas agrupan y proyectan; no tienen campos manuales que cambien saldos por su cuenta.
 
-## Conceptos base
+## Saldos reales
 
-### Ajustes
+- `currentSavings`: dinero disponible real.
+- `rentReserve`: dinero separado para renta y fuera del ahorro disponible.
+- `usedCreditBalance`: credito ocupado total que muestra el banco.
+- `monthlyRent`: renta mensual; una nomina aparta la mitad.
 
-`settings` contiene los supuestos globales:
-
-- `currentSavings`: ahorro real disponible al inicio del plan.
-- `rentReserve`: dinero separado para renta; se muestra aparte y no se mezcla con ahorro.
-- `salary`: sueldo quincenal esperado.
-- `monthlyRent`: renta mensual usada como referencia.
-- `defaultFood`: cargo promedio de comida en TDC.
-- `chatGpt`: cargo mensual de ChatGPT en tarjeta.
-- `previousCardDebt`: adeudo previo de tarjeta antes de movimientos nuevos.
-- `previousCardPayment`: pago de tarjeta ya aplicado contra el adeudo previo.
-- `pointsPayment`: pago con puntos aplicado contra la tarjeta.
-- `newJulyPurchases`: compras extra de tarjeta fuera del calendario importado.
-- `nonRecurringBalance`: saldo manual no recurrente.
-- `usedCreditBalance`: saldo utilizado real que muestra el banco. Es la fuente principal para la tarjeta.
-
-### Quincenas
-
-Cada `Period` representa una quincena. Los importes que salen de dinero real se guardan negativos:
-
-- `salary`, `extraIncome`, `partnerIncome` suman.
-- `rent` y `debitServices` restan.
-- `cardPayment` resta cuando llega el pago de tarjeta.
-- `foodCredit`, `otherCredit` y `chatGptCredit` son cargos de tarjeta; no bajan el ahorro al capturarse.
-
-La primera quincena es la base actual del plan. Su ahorro es `settings.currentSavings`; no se recalcula completa para evitar doble conteo de gastos que ya ocurrieron antes de importar o actualizar el respaldo.
-
-### Cierre de quincena / sueldo
-
-Cuando llega la fecha de pago de una quincena, la app puede cerrar esa quincena desde `Quincenas`.
-
-Reglas:
-
-- Para la primera quincena del mes, la fecha de pago es el dia 15 del mismo mes.
-- Para la segunda quincena del mes, la fecha de pago es el ultimo dia del mismo mes.
-- Al cerrar, se suma `salary + extraIncome + partnerIncome` a `settings.currentSavings`.
-- La renta de esa quincena (`rent`, guardada negativa) se resta del ahorro y se suma a `settings.rentReserve`.
-- Si la quincena base esta vacia, el cierre usa `settings.salary` y la mitad de `settings.monthlyRent`.
-- La quincena queda marcada como cerrada y sus campos de sueldo/renta se ponen en cero para no duplicar la proyeccion.
-- Una quincena cerrada no recibe ediciones, movimientos nuevos ni recurrentes; primero debe reabrirse.
-- Reabrir una quincena revierte el sueldo/renta aplicados al ahorro y al apartado de renta.
-- Si falta la siguiente quincena visible, se agrega usando los supuestos actuales (`salary`, `monthlyRent`, `defaultFood`).
-
-La renta apartada vive fuera del ahorro. Cuando se paga la renta con ese dinero separado, `Ajustes > Apartado de renta > Renta pagada` pone `settings.rentReserve` en cero sin tocar `currentSavings`.
-
-Cuando hay quincenas cerradas al inicio del plan, `settings.currentSavings` se usa como base de la primera quincena abierta. Las quincenas cerradas quedan como historial y no vuelven a anclar la proyeccion.
+Los demas campos antiguos de `Settings` y `Period` se conservan solo para importar respaldos anteriores. Al normalizar un respaldo version 1, las estimaciones de sueldo, pareja, comida, servicios y otros cargos dejan de participar en los calculos.
 
 ## Movimientos
 
-### Efectivo / debito
+Cada movimiento tiene una fecha real. La app asigna su quincena automaticamente:
 
-Un movimiento con metodo `cash` representa dinero que ya salio de ahorro o cuenta de debito.
+- dias 1 al 15: primera quincena;
+- dias 16 al ultimo dia: segunda quincena.
 
-Reglas:
+No se aceptan fechas futuras. Una quincena cerrada debe reabrirse antes de cambiar sus movimientos.
 
-- En quincenas futuras, se suma como salida en `debitServices`; el flujo de esa quincena baja el ahorro proyectado.
-- En la primera quincena abierta, tambien ajusta `settings.currentSavings` directamente, porque esa quincena parte del saldo real actual.
-- Si el movimiento esta marcado como compartido, el impacto personal en la primera quincena es la mitad del monto.
-- Al borrar el movimiento, el ajuste se revierte.
+### Ingreso
 
-Ejemplo:
+Un movimiento `income` suma al ahorro.
 
-```text
-Ahorro actual: 9,928.61
-Movimiento debito: 400.00
-Nuevo ahorro actual: 9,528.61
-```
+Si la categoria es `Nomina`, tambien aparta `monthlyRent / 2` en `rentReserve`. El movimiento guarda el monto exacto apartado para que editarlo o borrarlo revierta la misma cantidad, aunque despues cambie la renta mensual.
 
-Si es compartido:
+Otros ingresos, reembolsos y ventas suman el monto completo al ahorro. Un reembolso de una compra compartida se registra asi, en vez de calcular una aportacion de pareja.
 
-```text
-Ahorro actual: 9,928.61
-Movimiento debito compartido: 400.00
-Impacto personal: 200.00
-Nuevo ahorro actual: 9,728.61
-```
+### Debito o efectivo
+
+Un movimiento `cash` resta el monto real de `currentSavings` al guardarse. Al editarlo se revierte el movimiento anterior y se aplica el nuevo; al borrarlo se devuelve el monto.
 
 ### Tarjeta de credito
 
-Un movimiento con metodo `credit` representa una compra cargada a TDC.
+Un movimiento `credit`:
 
-Reglas:
+- no baja el ahorro al comprar;
+- aumenta `usedCreditBalance` por el monto completo;
+- aparece como cargo TDC de su quincena;
+- crea el calendario de una exhibicion, 3 MSI o 6 MSI.
 
-- La compra aumenta cargos de tarjeta de la quincena donde se capturo.
-- Si la categoria o descripcion contiene comida, mandado, super, supermercado o despensa, aumenta `foodCredit`; las demas compras TDC aumentan `otherCredit`.
-- No baja el ahorro inmediatamente.
-- Aumenta `usedCreditBalance` por el monto completo de la compra, incluso si es MSI.
-- Genera un calendario de pago segun `installments`.
-- Una exhibicion cae en la siguiente segunda quincena disponible.
-- 3 MSI o 6 MSI reparten el total entre las siguientes segundas quincenas disponibles.
-- Si se marca como compartido, se agrega `partnerIncome` por la mitad para reflejar que la pareja aporta esa parte.
-- Al editar la compra, primero se revierte el movimiento anterior y luego se aplica el nuevo. Asi el saldo usado solo cambia por la diferencia real.
-- Al borrar la compra, se revierte el cargo quincenal, el calendario de pagos y el aumento de `usedCreditBalance`.
+La fecha de corte decide el primer pago:
 
-### Pago TDC aplicado
+- compra en o antes del dia de corte: segunda quincena del mismo mes;
+- compra despues del corte: segunda quincena del mes siguiente.
 
-Un movimiento con metodo `card_payment` representa un pago real a la tarjeta.
+### Pago TDC
 
-Reglas:
+Un movimiento `card_payment` resta el mismo monto de `currentSavings` y de `usedCreditBalance`. Los pagos ya registrados se descuentan del siguiente pago pendiente.
 
-- Resta el monto completo de `usedCreditBalance`.
-- No modifica los cargos de compra ni los MSI; solo indica que ya bajaste el saldo usado con un pago.
-- En la pantalla `Tarjeta`, los pagos programados se pueden marcar como aplicados.
-- El siguiente `Pago al corte` ignora pagos ya registrados y muestra el siguiente pendiente.
-- Al borrar el movimiento de pago, el saldo usado vuelve a subir por ese monto.
+Los pagos existentes en respaldos version 1 conservan el comportamiento anterior al editarse: no se les aplica retroactivamente una salida de ahorro que la version vieja nunca registro.
+
+## Renta
+
+La renta es el unico efecto automatico ligado a un ingreso manual:
+
+```text
+Nomina registrada
+  -> ahorro += nomina - media renta
+  -> renta apartada += media renta
+```
+
+`Ajustes > Renta pagada` pone el apartado en cero cuando la renta ya salio de ese dinero separado. No vuelve a restarla del ahorro.
 
 ## Recurrentes
 
-Los recurrentes activos se proyectan en la quincena que corresponde a su dia:
+Los recurrentes activos se proyectan en fechas futuras, pero no cambian saldos reales antes de su dia.
 
-- Dias 1-15 entran en la primera quincena del mes.
-- Dias 16-31 entran en la segunda quincena del mes.
-- Si el mes no tiene ese dia, se usa el ultimo dia del mes.
-- Los recurrentes de debito solo se agregan si `debitServices` no cubre ya ese monto.
-- Los recurrentes de credito solo se agregan si `chatGptCredit` no cubre ya ese monto.
-- Al abrir la app, los recurrentes vencidos desde la ultima revision se materializan como movimientos reales.
-- Si no existe una revision previa, solo se revisa el dia actual para evitar meter historial viejo de golpe.
-- Los recurrentes de debito materializados aplican el gasto real en la quincena abierta y descuentan `currentSavings`; al hacerlo cubren la proyeccion para no duplicarla.
-- Los recurrentes de tarjeta materializados suben `usedCreditBalance`, pero no duplican los cargos de la quincena si ya estaban proyectados.
+Al llegar la fecha y abrir la app:
 
-Esta regla evita duplicar respaldos antiguos donde las suscripciones ya estaban capturadas manualmente en las quincenas.
+- debito se materializa como gasto y baja el ahorro;
+- tarjeta se materializa como compra, aumenta el saldo usado y agenda su pago segun el corte.
 
-## Saldo utilizado de tarjeta
+Cada movimiento automatico guarda `sourceRecurringId` y `recurringDate`. Si se cambia dia, monto, nombre, medio o estado del recurrente dentro de una quincena abierta, la app revierte el movimiento automatico anterior y solo vuelve a aplicarlo si la nueva fecha ya vencio. Los movimientos automaticos se corrigen desde Recurrentes para evitar duplicados.
 
-La pantalla `Tarjeta` muestra dos ideas distintas:
+## Quincenas
 
-- `Pago al corte`: el siguiente pago programado de TDC.
-- `Saldo utilizado TDC`: el saldo ocupado total de la tarjeta que muestra el banco. No es solo el corte; incluye compras pendientes, MSI vivos y cargos de tarjeta ya aplicados.
+Quincenas es un resumen, no un segundo formulario de captura. Muestra:
 
-El saldo utilizado se calcula en `calculateCardDebtFor`.
+- ingresos reales;
+- gastos de debito/efectivo;
+- cargos TDC;
+- pago TDC programado;
+- flujo y ahorro.
 
-Componentes:
+La quincena de la fecha actual muestra `currentSavings` como ahorro real. Los periodos futuros proyectan solo obligaciones conocidas: recurrentes y pagos de tarjeta. No inventan sueldo, comida ni aportaciones.
 
-- `calendarBalance`: suma de saldos no recurrentes (`debt`) desde `cardCalendar`; no suma los totales mensuales completos.
-- `usedCreditBalance`: saldo utilizado real capturado en Ajustes. Si viene de un respaldo viejo con el mismo valor que `nonRecurringBalance` o el saldo legacy, se recalcula para no quedarse congelado.
-- `settingsBalance`: respaldo legacy sin doble conteo. Usa `previousCardDebt - previousCardPayment - pointsPayment + newJulyPurchases`, comparado contra `nonRecurringBalance` cuando ese campo ya representa el total.
-- `scheduledPayments`: suma de pagos TDC pendientes en quincenas.
-- `scheduledFromTransactions`: suma de pagos pendientes generados por movimientos de tarjeta.
-- `creditPurchases`: compras de credito registradas en Movimientos; se muestra como referencia, pero no se suma encima si ya esta calendarizada.
-- `card_payment`: pagos reales aplicados a la tarjeta; bajan `usedCreditBalance`.
+Cerrar una quincena solo la archiva, guarda una referencia del ahorro y agrega la siguiente si falta. No suma ingresos, no aparta renta y no cambia la tarjeta. Reabrir tampoco modifica saldos.
 
-Formula:
+## Saldo utilizado TDC
 
-```text
-totalDebt = usedCreditBalanceValido || saldoCalculadoSinDuplicar || max(scheduledFromTransactions, calendarBalance, nextPayment)
-installmentBalance = max(totalDebt - nextPayment, 0)
-```
+`usedCreditBalance` es la fuente principal. Una compra real lo aumenta y un pago real lo reduce. La migracion de respaldos antiguos conserva la correccion de saldos congelados, pero las proyecciones futuras nunca se agregan al saldo ocupado antes de convertirse en movimientos.
 
-Esto evita inflar el saldo sumando meses futuros completos del calendario o historial viejo ya pagado. El numero confiable es `usedCreditBalance`, salvo cuando detectamos que solo es un valor legacy congelado como `nonRecurringBalance`. Cuando agregas o borras compras TDC desde la app, ese saldo sube o baja con la compra completa. Cuando registras un pago TDC aplicado, baja por el monto pagado.
-
-## Reportes
-
-Los reportes mensuales resumen:
-
-- ingresos;
-- gastos efectivo/debito;
-- pago TDC;
-- flujo;
-- ahorro de cierre;
-- cargos de credito del mes;
-- total de tarjeta importado/calculado.
-
-El CSV mensual se genera desde `src/lib/files.ts`.
-
-## Reglas de signos
-
-Convencion usada en la app:
-
-- ingresos positivos;
-- salidas de efectivo/debito negativas;
-- pagos de tarjeta negativos;
-- compras de tarjeta positivas dentro de `foodCredit`/`otherCredit`/`chatGptCredit`, porque son cargos antes de pagarse;
-- el saldo utilizado de TDC se muestra como numero positivo para lectura humana.
-
-## Donde tocar si cambia la logica
+## Archivos principales
 
 - Tipos: `pwa-finanzas/src/lib/types.ts`
-- Calculos: `pwa-finanzas/src/lib/calculations.ts`
+- Calculos y migraciones: `pwa-finanzas/src/lib/calculations.ts`
 - Captura y pantallas: `pwa-finanzas/src/App.tsx`
-- Exportaciones: `pwa-finanzas/src/lib/files.ts`
-- Semilla publica sin datos personales: `pwa-finanzas/src/lib/seed.ts`
+- Semilla publica: `pwa-finanzas/src/lib/seed.ts`

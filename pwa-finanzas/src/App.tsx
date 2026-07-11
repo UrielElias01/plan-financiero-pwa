@@ -21,6 +21,7 @@ import {
   Check,
   ChevronRight,
   CircleHelp,
+  CircleDollarSign,
   Compass,
   CreditCard,
   Download,
@@ -34,6 +35,7 @@ import {
   PlayCircle,
   Plus,
   RefreshCcw,
+  Receipt,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -46,18 +48,17 @@ import type { LucideIcon } from "lucide-react";
 import {
   applyTransactionToState,
   asNumber,
-  buildNextPeriodFor,
   buildPaymentScheduleFor,
   calculateCardDebtFor,
   calculateMonthlyFor,
   calculatePeriodsFor,
-  closingPreviewFor,
   closePeriodFor,
-  duePayrollPeriodsFor,
+  duePeriodsFor,
   formatMoney,
-  materializeDueRecurringTransactions,
   normalizeState,
   paydayForPeriod,
+  periodIdForDate,
+  reconcileRecurringTransactions,
   reopenPeriodFor,
   signedTone,
 } from "./lib/calculations";
@@ -161,31 +162,29 @@ const guideTopics: GuideTopic[] = [
   {
     id: "periods",
     title: "Quincenas",
-    summary: "Aqui vive el calendario financiero real: cada sueldo alimenta la quincena que toca sobrevivir.",
-    editable: ["Sueldo", "Ingreso extra o de pareja", "Renta/apartado", "Servicios", "Cargos a tarjeta", "Pago de tarjeta"],
+    summary: "Resume los movimientos reales y las obligaciones conocidas dentro de cada quincena.",
+    editable: ["Cerrar una quincena terminada", "Reabrir una quincena si necesitas corregir su historial"],
     steps: [
-      "Abre la quincena que quieres ajustar.",
-      "Captura gastos en negativo si son salidas de efectivo, como renta o servicios.",
-      "Captura pago de tarjeta en negativo para que afecte el ahorro proyectado.",
-      "Guarda y vuelve a Inicio para ver el impacto completo.",
+      "Registra ingresos y gastos desde Movimientos.",
+      "Revisa aqui el total que cayo en cada quincena.",
+      "Cierra una quincena terminada para proteger su historial.",
     ],
-    tip: "Esta es la pantalla mas importante para conservar el modelo por quincenas, sin mezclar saldos intermedios.",
+    tip: "Cerrar una quincena solo la archiva; no modifica saldos.",
     icon: CalendarClock,
     accent: "from-blue-700 to-sky-500",
   },
   {
     id: "transactions",
     title: "Movimientos",
-    summary: "Registra compras, gastos o ingresos nuevos y deja que la app los acomode en quincenas, ahorros y pagos de TDC.",
-    editable: ["Nombre", "Monto", "Fecha", "Categoria", "Medio de pago", "Quincena", "Dividir con pareja", "MSI"],
+    summary: "Es la fuente de verdad para ingresos, gastos, compras y pagos de tarjeta.",
+    editable: ["Ingreso", "Debito o efectivo", "Tarjeta de credito", "Pago TDC", "Fecha", "Categoria", "MSI"],
     steps: [
-      "Elige si fue tarjeta o efectivo/debito.",
-      "Selecciona la quincena donde ocurrio el gasto.",
-      "Si fue efectivo/debito en la quincena base, el ahorro actual baja de inmediato porque ese dinero salio del ahorro.",
-      "Si fue compartido, marca dividir con pareja para agregar la mitad como ingreso.",
+      "Elige ingreso, debito/efectivo, tarjeta o pago TDC.",
+      "Captura la fecha real; la quincena se asigna sola.",
+      "Los ingresos suman al ahorro y los gastos reales lo restan.",
       "Si fue tarjeta a meses, elige 3 o 6 MSI para repartir pagos en las segundas quincenas.",
     ],
-    tip: "Para comida compartida pagada con TDC, captura el total y marca dividir con pareja.",
+    tip: "Si alguien te reembolsa una parte, registra ese dinero como ingreso cuando lo recibas.",
     icon: WalletCards,
     accent: "from-teal to-emerald-500",
   },
@@ -236,7 +235,7 @@ const guideTopics: GuideTopic[] = [
     id: "settings",
     title: "Ajustes",
     summary: "Controla los supuestos base, la plantilla y la sincronizacion cifrada.",
-    editable: ["Ahorro actual", "Renta apartada", "Sueldo", "Renta mensual", "Comida/TDC por defecto", "ChatGPT", "Saldo utilizado TDC", "Dias de corte y pago", "Sync cifrado"],
+    editable: ["Ahorro actual", "Renta apartada", "Renta mensual", "Saldo utilizado TDC", "Dias de corte y pago", "Sync cifrado"],
     steps: [
       "Ajusta los supuestos generales cuando cambie tu vida normal.",
       "Guarda antes de salir de la pantalla.",
@@ -271,8 +270,8 @@ const guidedTourSteps: GuidedTourStep[] = [
     targetLabel: "Botones superiores",
     title: "Acciones siempre disponibles",
     intro: "Estos botones viven en todas las pantallas para que no tengas que volver al menu.",
-    focus: "Ayuda abre una guia contextual, Tour inicia una guia, Agregar gasto abre Movimientos, Acciones muestra atajos y Respaldo descarga tu JSON.",
-    action: "Usa Respaldo antes de cambios grandes y Agregar gasto cuando quieras capturar algo nuevo rapido.",
+    focus: "Ayuda abre una guia contextual, Tour inicia una guia, Nuevo movimiento abre el registro, Acciones muestra atajos y Respaldo descarga tu JSON.",
+    action: "Usa Respaldo antes de cambios grandes y Nuevo movimiento para capturar algo real.",
     outcome: "Puedes moverte por la app sin perder el punto donde estabas.",
   },
   {
@@ -337,20 +336,9 @@ const guidedTourSteps: GuidedTourStep[] = [
     targetLabel: "Plan quincenal",
     title: "Modulo de Quincenas",
     intro: "Este modulo es la columna vertebral del sistema.",
-    focus: "Cada sueldo se usa para vivir la quincena correspondiente; aqui no se mezclan saldos intermedios.",
-    action: "Usalo para ajustar montos que pertenecen a una quincena especifica.",
+    focus: "Cada fila agrupa los movimientos por fecha y separa ingresos, debito, cargos TDC y pagos.",
+    action: "Usalo para revisar o cerrar periodos terminados.",
     outcome: "El historial queda ordenado por periodos.",
-  },
-  {
-    moduleId: "periods",
-    view: "periods",
-    target: "periods-add",
-    targetLabel: "Agregar quincena",
-    title: "Crear nuevos periodos",
-    intro: "Este boton agrega una quincena editable al final del plan.",
-    focus: "La nueva quincena toma valores base de tus ajustes para que no empieces desde cero.",
-    action: "Usalo cuando quieras extender el plan a mas meses.",
-    outcome: "Puedes seguir proyectando sin rehacer tablas.",
   },
   {
     moduleId: "periods",
@@ -359,9 +347,9 @@ const guidedTourSteps: GuidedTourStep[] = [
     targetLabel: "Tabla quincenal",
     title: "Leer la tabla",
     intro: "Cada fila representa una quincena y cada columna te dice como afecta tu ahorro.",
-    focus: "Sueldo e ingresos suman; gastos, renta y pago de tarjeta restan; flujo cambia el ahorro.",
-    action: "Presiona Editar en una fila para corregir montos puntuales.",
-    outcome: "El plan se recalcula sin borrar las demas quincenas.",
+    focus: "Ingresos, gastos, cargos TDC y pagos salen de tus movimientos.",
+    action: "Cierra una quincena cuando termine; reabrela solo si necesitas corregir movimientos.",
+    outcome: "El historial queda protegido sin cambiar tus saldos.",
   },
   {
     moduleId: "transactions",
@@ -370,31 +358,20 @@ const guidedTourSteps: GuidedTourStep[] = [
     targetLabel: "Formulario de movimiento",
     title: "Captura un movimiento",
     intro: "Aqui registras compras, gastos o ingresos nuevos.",
-    focus: "Nombre, monto, fecha, categoria, medio de pago y quincena.",
-    action: "Captura el monto real de la compra o gasto.",
+    focus: "Tipo, nombre, monto, fecha y categoria; la quincena se asigna por fecha.",
+    action: "Captura el monto real del ingreso o gasto.",
     outcome: "La app ajusta la quincena y, si aplica, los pagos de tarjeta.",
   },
   {
     moduleId: "transactions",
     view: "transactions",
     target: "transactions-method",
-    targetLabel: "Medio de pago",
-    title: "Tarjeta vs debito",
+    targetLabel: "Tipo de movimiento",
+    title: "Ingreso o gasto",
     intro: "Esta seleccion cambia como se refleja el movimiento.",
-    focus: "Tarjeta agenda el pago futuro; efectivo/debito pega directo al flujo de la quincena.",
-    action: "Elige tarjeta si entrara al corte; elige debito si el dinero ya salio.",
+    focus: "Ingreso suma al ahorro; debito y pago TDC restan; tarjeta aumenta la deuda.",
+    action: "Elige el tipo que coincida con lo que realmente ocurrio.",
     outcome: "El calculo cae en el periodo correcto.",
-  },
-  {
-    moduleId: "transactions",
-    view: "transactions",
-    target: "transactions-shared",
-    targetLabel: "Dividir con pareja",
-    title: "Gastos compartidos",
-    intro: "Esta casilla sirve para compras que pagas completas pero te reembolsan una parte.",
-    focus: "La app suma la mitad como ingreso de pareja para reflejar tu carga real.",
-    action: "Marcala cuando captures el total real pagado con tu tarjeta.",
-    outcome: "La tarjeta refleja el total y tu plan refleja solo tu carga real.",
   },
   {
     moduleId: "transactions",
@@ -513,9 +490,9 @@ const guidedTourSteps: GuidedTourStep[] = [
     targetLabel: "Ajustes principales",
     title: "Supuestos base",
     intro: "Aqui viven las constantes del plan.",
-    focus: "Ahorro actual, renta apartada, sueldo, renta mensual, comida/TDC, ChatGPT y fechas de tarjeta.",
-    action: "Cambia aqui solo lo que aplica de forma recurrente.",
-    outcome: "Las quincenas nuevas nacen con valores correctos.",
+    focus: "Ahorro actual, renta apartada, renta mensual, saldo TDC y fechas de tarjeta.",
+    action: "Usalo para conciliar los saldos que muestran tu banco y tu tarjeta.",
+    outcome: "Los movimientos siguientes parten de saldos reales.",
   },
   {
     moduleId: "settings",
@@ -600,9 +577,16 @@ function isClosedPeriod(state: AppState, periodId: string): boolean {
 }
 
 function transactionMethodLabel(method: Transaction["method"]): string {
+  if (method === "income") return "Ingreso";
   if (method === "credit") return "Tarjeta de credito";
   if (method === "card_payment") return "Pago TDC aplicado";
   return "Efectivo / debito";
+}
+
+function payrollRentReserve(state: AppState, previousReserve = 0): number {
+  const monthlyRent = Math.max(0, asNumber(state.settings.monthlyRent));
+  const reserveBeforeEdit = Math.max(0, state.settings.rentReserve - previousReserve);
+  return Math.min(monthlyRent / 2, Math.max(0, monthlyRent - reserveBeforeEdit));
 }
 
 function MetricCard({
@@ -620,11 +604,11 @@ function MetricCard({
     <article className="metric-card group">
       <div className="mb-5 flex items-center justify-between gap-3">
         <span className="text-sm font-black text-slate-500">{label}</span>
-        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-ocean/15 to-teal/15 text-navy transition group-hover:scale-105">
+        <span className="grid h-11 w-11 place-items-center rounded-lg bg-blue-50 text-navy">
           <Icon size={21} />
         </span>
       </div>
-      <strong className="block text-3xl font-black tracking-tight text-navy">{value}</strong>
+      <strong className="block text-3xl font-black text-navy">{value}</strong>
       <small className="mt-2 block text-sm text-slate-500">{note}</small>
     </article>
   );
@@ -642,7 +626,7 @@ function Modal({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog">
-      <div className="animate-fade-up w-full max-w-3xl overflow-hidden rounded-[2rem] border border-white/60 bg-white/90 shadow-glow backdrop-blur-2xl">
+      <div className="animate-fade-up w-full max-w-3xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-card">
         <button
           className="absolute right-5 top-5 z-10 grid h-10 w-10 place-items-center rounded-full bg-white/80 text-navy shadow"
           type="button"
@@ -659,7 +643,7 @@ function Modal({
 
 function EmptyState({ title, text }: { title: string; text: string }) {
   return (
-    <div className="rounded-3xl border border-dashed border-blue-200 bg-white/50 p-8 text-center">
+    <div className="rounded-lg border border-dashed border-blue-200 bg-white p-8 text-center">
       <Sparkles className="mx-auto mb-3 text-teal" />
       <h4 className="font-black text-navy">{title}</h4>
       <p className="mt-2 text-sm text-slate-500">{text}</p>
@@ -708,7 +692,8 @@ function buildFinancialInsights(
 ): FinancialInsight[] {
   const insights: FinancialInsight[] = [];
   const currentSavings = Math.max(0, asNumber(state.settings.currentSavings));
-  const salary = Math.max(0, asNumber(state.settings.salary));
+  const monthlyRent = Math.max(0, asNumber(state.settings.monthlyRent));
+  const rentReserve = Math.max(0, asNumber(state.settings.rentReserve));
   const finalSavings = periods.at(-1)?.savings || currentSavings;
   const lowestSavings = periods.reduce<CalculatedPeriod | null>(
     (lowest, period) => (!lowest || period.savings < lowest.savings ? period : lowest),
@@ -724,7 +709,7 @@ function buildFinancialInsights(
   const inactiveRecurring = state.recurring.filter((item) => !item.active || asNumber(item.amount) <= 0);
   const recurringTotal = activeRecurring.reduce((total, item) => total + Math.max(0, asNumber(item.amount)), 0);
   const recurringTop = activeRecurring[0];
-  const nextPaymentShare = salary > 0 ? (cardDebt.nextPayment / salary) * 100 : 0;
+  const nextPaymentShare = currentSavings > 0 ? (cardDebt.nextPayment / currentSavings) * 100 : 0;
   const cardVsSavings = currentSavings > 0 ? (cardDebt.totalDebt / currentSavings) * 100 : 0;
   const monthlyCardPeak = monthly.reduce((peak, row) => Math.max(peak, Math.abs(row.cardPayment)), 0);
 
@@ -758,11 +743,11 @@ function buildFinancialInsights(
       title: "Proximo pago TDC",
       value: formatMoney(cardDebt.nextPayment),
       detail:
-        salary > 0
-          ? `Consume ${formatPercent(nextPaymentShare)} de un sueldo quincenal.`
+        currentSavings > 0
+          ? `Equivale a ${formatPercent(nextPaymentShare)} de tu ahorro disponible.`
           : "Es el pago mas urgente del calendario de tarjeta.",
-      action: nextPaymentShare >= 70 ? "Apartalo antes de gastos variables." : "Registralo cuando se pague para liberar saldo ocupado.",
-      tone: nextPaymentShare >= 70 ? "warning" : "info",
+      action: nextPaymentShare >= 50 ? "Evita gastos variables hasta cubrirlo." : "Registralo al pagarlo para actualizar ahorro y deuda.",
+      tone: nextPaymentShare >= 50 ? "warning" : "info",
       icon: CalendarClock,
       view: "card",
     });
@@ -804,6 +789,19 @@ function buildFinancialInsights(
       tone: "info",
       icon: ChartSpline,
       view: "card",
+    });
+  }
+
+  if (monthlyRent > 0 && rentReserve < monthlyRent) {
+    insights.push({
+      id: "rent-reserve",
+      title: "Renta por completar",
+      value: formatMoney(monthlyRent - rentReserve),
+      detail: `Tienes apartado ${formatPercent((rentReserve / monthlyRent) * 100)} de la renta mensual.`,
+      action: "La siguiente nomina apartara automaticamente la mitad configurada.",
+      tone: rentReserve === 0 ? "warning" : "info",
+      icon: Receipt,
+      view: "settings",
     });
   }
 
@@ -865,8 +863,8 @@ export function App() {
   const [tourOpen, setTourOpen] = useState(false);
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);
-  const [periodDraft, setPeriodDraft] = useState<Period | null>(null);
   const [transactionDraft, setTransactionDraft] = useState<Transaction | null>(null);
+  const [newTransactionMethod, setNewTransactionMethod] = useState<Transaction["method"]>("cash");
   const [recurringDraft, setRecurringDraft] = useState(emptyRecurring);
   const [recurringDraftIndex, setRecurringDraftIndex] = useState<number | null>(null);
   const [syncDraft, setSyncDraft] = useState(cloneSeed().sync);
@@ -883,7 +881,7 @@ export function App() {
   const periods = useMemo(() => calculatePeriodsFor(state), [state]);
   const monthly = useMemo(() => calculateMonthlyFor(state, periods), [state, periods]);
   const cardDebt = useMemo(() => calculateCardDebtFor(state, periods), [state, periods]);
-  const duePayrollPeriods = useMemo(() => duePayrollPeriodsFor(state, today), [state]);
+  const duePeriods = useMemo(() => duePeriodsFor(state, today), [state]);
   const activeNav = navItems.find((item) => item.id === view) || navItems[0];
   const activeGuide = guideTopics.find((topic) => topic.id === (guideTopicId || view)) || guideTopics[0];
   const activeTourStep = guidedTourSteps[tourStepIndex] || guidedTourSteps[0];
@@ -891,7 +889,7 @@ export function App() {
   useEffect(() => {
     loadState()
       .then(async (loaded) => {
-        const recurringResult = materializeDueRecurringTransactions(loaded, today);
+        const recurringResult = reconcileRecurringTransactions(loaded, today);
         if (
           recurringResult.added.length ||
           recurringResult.state.recurringLastAppliedDate !== loaded.recurringLastAppliedDate
@@ -1162,56 +1160,10 @@ export function App() {
     showToast("Actualizando app");
   }
 
-  function openPeriod(period: Period) {
-    setPeriodDraft({ ...period });
-  }
-
-  async function savePeriod() {
-    if (!periodDraft) return;
-    if (periodDraft.closedAt) {
-      showToast("Reabre la quincena antes de editarla", "danger");
-      return;
-    }
-    await commit(
-      {
-        ...state,
-        periods: state.periods.map((period) => (period.id === periodDraft.id ? { ...periodDraft } : period)),
-      },
-      "Quincena guardada",
-    );
-    setPeriodDraft(null);
-  }
-
-  async function addPeriod() {
-    const period: Period = buildNextPeriodFor(state) || {
-      id: crypto.randomUUID(),
-      month: "Nuevo",
-      label: "Nueva quincena",
-      note: "Edita esta quincena",
-      salary: state.settings.salary,
-      extraIncome: 0,
-      partnerIncome: state.settings.defaultFood / 2,
-      rent: -(state.settings.monthlyRent / 2),
-      debitServices: 0,
-      foodCredit: state.settings.defaultFood,
-      otherCredit: 0,
-      chatGptCredit: 0,
-      cardPayment: 0,
-    };
-    await commit({ ...state, periods: [...state.periods, period] }, "Quincena agregada");
-    setPeriodDraft(period);
-  }
-
-  async function closePayrollPeriod(period: Period) {
-    const { income, rentReserve } = closingPreviewFor(state, period);
-    if (income === 0 && rentReserve <= 0) {
-      showToast("Esta quincena no tiene sueldo o renta pendiente", "danger");
-      return;
-    }
-
+  async function closePeriod(period: Period) {
     const confirmed = await confirmAction({
       title: `Cerrar ${period.label}`,
-      message: `Se sumaran ${formatMoney(income)} al ahorro, se apartaran ${formatMoney(rentReserve)} para renta y se agregara la siguiente quincena calculada si falta.`,
+      message: "La quincena quedara como historial y ya no aceptara cambios. Tus saldos no se modificaran.",
       confirmText: "Cerrar quincena",
     });
     if (!confirmed) return;
@@ -1220,11 +1172,11 @@ export function App() {
     await commit(result.state, result.nextPeriod ? "Quincena cerrada y siguiente agregada" : "Quincena cerrada");
   }
 
-  async function reopenPayrollPeriod(period: Period) {
+  async function reopenPeriod(period: Period) {
     if (!period.closedAt) return;
     const confirmed = await confirmAction({
       title: `Reabrir ${period.label}`,
-      message: "Se revertira el sueldo/renta aplicados y esta quincena volvera a poder editarse.",
+      message: "La quincena volvera a aceptar movimientos. Tus saldos no se modificaran.",
       confirmText: "Reabrir quincena",
     });
     if (!confirmed) return;
@@ -1252,27 +1204,66 @@ export function App() {
     const form = event.currentTarget;
     const methodField = getField(form, "method");
     const method: Transaction["method"] =
-      methodField === "card_payment" ? "card_payment" : methodField === "credit" ? "credit" : "cash";
+      methodField === "income"
+        ? "income"
+        : methodField === "card_payment"
+          ? "card_payment"
+          : methodField === "credit"
+            ? "credit"
+            : "cash";
+    const date = getField(form, "date") || today;
+    const category = method === "card_payment" ? "Pago TDC" : getField(form, "category");
+    const periodId = periodIdForDate(state, date);
+    const rentReserveAmount =
+      method === "income" && category === "Nomina"
+        ? payrollRentReserve(state, asNumber(transactionDraft?.rentReserveAmount))
+        : 0;
     const transactionBase: Transaction = {
       id: transactionDraft?.id || crypto.randomUUID(),
-      date: getField(form, "date") || today,
+      date,
       description: getField(form, "description"),
       amount: asNumber(getField(form, "amount")),
-      category: getField(form, "category"),
+      category,
       method,
-      periodId: getField(form, "periodId"),
-      shared: method !== "card_payment" && Boolean(new FormData(form).get("shared")),
+      periodId,
+      shared: transactionDraft?.shared || false,
       installments: method === "credit" ? asNumber(getField(form, "installments"), 1) : 1,
       sourceRecurringId: transactionDraft?.sourceRecurringId,
       recurringDate: transactionDraft?.recurringDate,
-      skipPlanImpact: transactionDraft?.skipPlanImpact,
+      skipPlanImpact: false,
+      affectsSavings:
+        transactionDraft?.method === method && typeof transactionDraft.affectsSavings === "boolean"
+          ? transactionDraft.affectsSavings
+          : method !== "credit",
+      rentReserveAmount,
     };
+    if (transactionBase.amount <= 0) {
+      showToast("El monto debe ser mayor a cero", "danger");
+      return;
+    }
+    if (date > today) {
+      showToast("Registra el movimiento cuando realmente ocurra", "danger");
+      return;
+    }
     if (!transactionBase.periodId) {
-      showToast("Necesitas una quincena abierta para guardar movimientos", "danger");
+      showToast("No existe una quincena para esa fecha", "danger");
       return;
     }
     if (isClosedPeriod(state, transactionBase.periodId) || (transactionDraft && isClosedPeriod(state, transactionDraft.periodId))) {
       showToast("Reabre la quincena antes de cambiar sus movimientos", "danger");
+      return;
+    }
+    const duplicate = state.transactions.some(
+      (entry) =>
+        entry.id !== transactionDraft?.id &&
+        entry.date === transactionBase.date &&
+        entry.method === transactionBase.method &&
+        entry.category === transactionBase.category &&
+        entry.description.trim().toLowerCase() === transactionBase.description.trim().toLowerCase() &&
+        Math.abs(entry.amount - transactionBase.amount) < 0.01,
+    );
+    if (duplicate) {
+      showToast("Ese movimiento ya esta registrado", "danger");
       return;
     }
     const baseState = transactionDraft
@@ -1301,6 +1292,7 @@ export function App() {
       transactionDraft ? "Movimiento actualizado" : "Movimiento agregado",
     );
     setTransactionDraft(null);
+    setNewTransactionMethod("cash");
     form.reset();
     (form.elements.namedItem("date") as HTMLInputElement).value = today;
   }
@@ -1311,12 +1303,19 @@ export function App() {
       return;
     }
     setTransactionDraft({ ...transaction });
+    setNewTransactionMethod(transaction.method);
     setView("transactions");
     window.setTimeout(() => document.querySelector<HTMLElement>('[data-tour="transactions-form"]')?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
   }
 
   function clearTransactionDraft() {
     setTransactionDraft(null);
+  }
+
+  function openNewTransaction(method: Transaction["method"]) {
+    setTransactionDraft(null);
+    setNewTransactionMethod(method);
+    setView("transactions");
   }
 
   async function deleteTransaction(transaction: Transaction) {
@@ -1367,7 +1366,7 @@ export function App() {
 
     const confirmed = await confirmAction({
       title: "Registrar pago TDC",
-      message: `Se restaran ${formatMoney(pendingAmount)} del saldo utilizado de la tarjeta para ${period.label}.`,
+      message: `Se restaran ${formatMoney(pendingAmount)} del ahorro y del saldo utilizado de la tarjeta para ${period.label}.`,
       confirmText: "Registrar pago",
     });
     if (!confirmed) return;
@@ -1383,6 +1382,8 @@ export function App() {
       shared: false,
       installments: 1,
       paymentSchedule: [],
+      affectsSavings: true,
+      rentReserveAmount: 0,
     };
 
     await commit(
@@ -1414,7 +1415,8 @@ export function App() {
       editIndex >= 0
         ? state.recurring.map((entry, index) => (index === editIndex ? item : entry))
         : [...state.recurring, item];
-    await commit({ ...state, recurring }, "Recurrente guardado");
+    const reconciled = reconcileRecurringTransactions({ ...state, recurring }, today, [item.id]);
+    await commit(reconciled.state, "Recurrente guardado");
     clearRecurringDraft();
   }
 
@@ -1436,7 +1438,12 @@ export function App() {
       danger: true,
     });
     if (!confirmed) return;
-    await commit({ ...state, recurring: state.recurring.filter((entry) => entry.id !== item.id) }, "Recurrente borrado");
+    const reconciled = reconcileRecurringTransactions(
+      { ...state, recurring: state.recurring.filter((entry) => entry.id !== item.id) },
+      today,
+      [item.id],
+    );
+    await commit(reconciled.state, "Recurrente borrado");
     if (recurringDraft.id === item.id) clearRecurringDraft();
   }
 
@@ -1466,7 +1473,7 @@ export function App() {
     if (!file) return;
     const imported = await readJsonFile(file);
     const next = normalizeState(imported as Partial<AppState>);
-    await commit(next, "Respaldo importado");
+    await commit(reconcileRecurringTransactions(next, today).state, "Respaldo importado");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -1529,7 +1536,6 @@ export function App() {
 
   const hasRealData =
     state.settings.currentSavings !== 0 ||
-    state.settings.salary !== 0 ||
     state.transactions.length > 0 ||
     state.recurring.length > 0;
 
@@ -1551,7 +1557,7 @@ export function App() {
     return (
       <div className="grid min-h-dvh place-items-center p-6">
         <div className="panel max-w-sm text-center">
-          <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-3xl bg-gradient-to-br from-ocean to-teal text-white">
+          <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-lg bg-ocean text-white">
             <Sparkles className="animate-soft-pulse" />
           </div>
           <h1 className="text-xl font-black text-navy">Cargando tu plan</h1>
@@ -1563,9 +1569,6 @@ export function App() {
 
   return (
     <>
-      <div className="ambient ambient-one" />
-      <div className="ambient ambient-two" />
-      <div className="ambient ambient-three" />
       {mobileMenu ? <div className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileMenu(false)} /> : null}
 
       <div
@@ -1574,12 +1577,12 @@ export function App() {
         }`}
       >
         <aside
-          className={`mobile-menu-shell fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(21rem,calc(100vw-3rem))] flex-col gap-6 overflow-y-auto bg-gradient-to-b from-navy to-slate-900 p-5 text-white shadow-2xl transition-transform duration-200 lg:sticky lg:top-0 lg:w-auto lg:translate-x-0 lg:overflow-hidden ${
+          className={`mobile-menu-shell fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(21rem,calc(100vw-3rem))] flex-col gap-6 overflow-y-auto bg-navy p-5 text-white shadow-2xl transition-transform duration-200 lg:sticky lg:top-0 lg:w-auto lg:translate-x-0 lg:overflow-hidden ${
             mobileMenu ? "translate-x-0" : "-translate-x-[105%]"
           } ${sidebarCollapsed ? "lg:items-center lg:p-4" : ""}`}
         >
           <div className="flex items-center gap-3">
-            <div className="grid h-12 w-12 shrink-0 -rotate-3 place-items-center rounded-2xl bg-white font-black tracking-tighter text-navy shadow-xl">
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white font-black text-navy shadow-card">
               PF
             </div>
             {!sidebarCollapsed ? (
@@ -1589,7 +1592,7 @@ export function App() {
               </div>
             ) : null}
             <button
-              className="ml-auto hidden h-10 w-10 place-items-center rounded-2xl border border-white/15 bg-white/10 text-white lg:grid"
+              className="ml-auto hidden h-10 w-10 place-items-center rounded-lg border border-white/15 bg-white/10 text-white lg:grid"
               type="button"
               onClick={toggleSidebar}
               aria-label={sidebarCollapsed ? "Mostrar menu" : "Ocultar menu"}
@@ -1597,7 +1600,7 @@ export function App() {
               {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
             </button>
             <button
-              className="ml-auto grid h-10 w-10 place-items-center rounded-2xl border border-white/15 bg-white/10 text-white lg:hidden"
+              className="ml-auto grid h-10 w-10 place-items-center rounded-lg border border-white/15 bg-white/10 text-white lg:hidden"
               type="button"
               onClick={() => setMobileMenu(false)}
               aria-label="Cerrar menu"
@@ -1613,7 +1616,7 @@ export function App() {
               return (
                 <button
                   key={item.id}
-                  className={`flex items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-black transition hover:translate-x-1 hover:bg-white/10 ${
+                  className={`flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-black transition hover:bg-white/10 ${
                     active ? "bg-white/15 text-white" : "text-white/78"
                   } ${sidebarCollapsed ? "lg:justify-center lg:px-2" : ""}`}
                   type="button"
@@ -1634,7 +1637,7 @@ export function App() {
             })}
           </nav>
 
-          <div className={`mt-auto rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-xl ${sidebarCollapsed ? "lg:p-3" : ""}`}>
+          <div className={`mt-auto rounded-lg border border-white/15 bg-white/10 p-4 ${sidebarCollapsed ? "lg:p-3" : ""}`}>
             {sidebarCollapsed ? (
               <ShieldCheck className="mx-auto" />
             ) : (
@@ -1667,11 +1670,10 @@ export function App() {
         </aside>
 
         <main className="min-w-0 p-3 sm:p-4 lg:p-6">
-          <header className="app-header md:sticky md:top-0 z-30 mb-4 flex flex-col gap-4 overflow-hidden rounded-[1.4rem] border border-white/60 bg-white/70 p-3 shadow-card backdrop-blur-2xl sm:p-4 md:mb-5 md:flex-row md:items-center md:justify-between md:rounded-[1.6rem]">
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-ocean via-teal to-mint" />
+          <header className="app-header md:sticky md:top-0 z-30 mb-4 flex flex-col gap-4 overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-card sm:p-4 md:mb-5 md:flex-row md:items-center md:justify-between">
             <div className="relative">
               <p className="eyebrow">Actualizable por ti</p>
-              <h2 className="text-2xl font-black tracking-tight text-navy sm:text-3xl md:text-4xl">{activeNav.label}</h2>
+              <h2 className="text-2xl font-black text-navy sm:text-3xl md:text-4xl">{activeNav.label}</h2>
               <p className="mt-1 max-w-2xl text-sm text-slate-500">{activeGuide.summary}</p>
             </div>
             <div className="app-header-actions relative grid grid-cols-2 gap-2 md:flex md:flex-wrap md:justify-end" data-tour="header-actions">
@@ -1700,9 +1702,9 @@ export function App() {
                   Actualizar
                 </button>
               ) : null}
-              <button className="button-primary" type="button" onClick={() => setView("transactions")}>
+              <button className="button-primary" type="button" onClick={() => openNewTransaction("cash")}>
                 <Plus size={18} />
-                Agregar gasto
+                Nuevo movimiento
               </button>
               <button className="button-ghost" type="button" onClick={() => setQuickActionsOpen(true)}>
                 <Sparkles size={18} />
@@ -1728,26 +1730,26 @@ export function App() {
                 insights={financialInsights}
                 chartData={chartData}
                 onImport={importJson}
-                onEditPeriods={() => setView("periods")}
-                onNavigate={setView}
+                 onEditPeriods={() => setView("periods")}
+                 onNavigate={setView}
+                 onAddIncome={() => openNewTransaction("income")}
+                 onAddExpense={() => openNewTransaction("cash")}
                 fileInputRef={fileInputRef}
               />
             ) : null}
             {view === "periods" ? (
               <PeriodsView
                 periods={periods}
-                state={state}
-                duePayrollPeriods={duePayrollPeriods}
-                onEdit={openPeriod}
-                onAdd={addPeriod}
-                onClosePayrollPeriod={closePayrollPeriod}
-                onReopenPayrollPeriod={reopenPayrollPeriod}
+                duePeriods={duePeriods}
+                onClosePeriod={closePeriod}
+                onReopenPeriod={reopenPeriod}
               />
             ) : null}
             {view === "transactions" ? (
               <TransactionsView
                 state={state}
                 draft={transactionDraft}
+                defaultMethod={newTransactionMethod}
                 onSubmit={submitTransaction}
                 onEdit={editTransaction}
                 onDelete={deleteTransaction}
@@ -1850,13 +1852,6 @@ export function App() {
         onJump={goToTourStep}
       />
 
-      <PeriodModal
-        period={periodDraft}
-        onClose={() => setPeriodDraft(null)}
-        onChange={setPeriodDraft}
-        onSave={savePeriod}
-      />
-
       <Modal open={Boolean(confirmConfig)} onClose={() => resolveConfirm(false)}>
         <div className="p-6">
           <p className="eyebrow">Confirmar</p>
@@ -1902,6 +1897,8 @@ function Dashboard({
   onImport,
   onEditPeriods,
   onNavigate,
+  onAddIncome,
+  onAddExpense,
   fileInputRef,
 }: {
   periods: CalculatedPeriod[];
@@ -1916,37 +1913,43 @@ function Dashboard({
   onImport: (file?: File | null) => void;
   onEditPeriods: () => void;
   onNavigate: (view: ViewId) => void;
+  onAddIncome: () => void;
+  onAddExpense: () => void;
   fileInputRef: RefObject<HTMLInputElement>;
 }) {
   const activePeriod = periods.find((period) => !period.closedAt) || periods[0];
+  const activeRecurring = state.recurring.filter((item) => item.active && item.amount > 0);
+  const recurringTotal = activeRecurring.reduce((total, item) => total + item.amount, 0);
   return (
     <div className="grid gap-5">
-      <section className="relative overflow-hidden rounded-[1.6rem] bg-gradient-to-br from-navy via-ocean to-teal p-4 text-white shadow-glow sm:p-6 md:rounded-[2rem] md:p-8" data-tour="dashboard-hero">
-        <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full border border-white/20 bg-white/10 blur-sm" />
-        <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-center">
+      <section className="summary-band" data-tour="dashboard-hero">
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
           <div>
-            <p className="eyebrow text-white/70">Centro financiero</p>
-            <h3 className="mt-3 max-w-4xl text-3xl font-black leading-[0.98] tracking-[-0.06em] sm:text-4xl md:text-6xl">
-              Tu plan quincenal, tarjeta y ahorros en un tablero vivo.
-            </h3>
-            <p className="mt-4 max-w-2xl text-white/76">
-              Edita supuestos, agrega movimientos, revisa reportes y sincroniza un respaldo cifrado sin volver al Excel.
+            <p className="eyebrow">Resumen actual</p>
+            <h3 className="mt-2 text-2xl font-black text-navy">{activePeriod?.label || "Sin quincena activa"}</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              {state.transactions.length} movimientos registrados | {activeRecurring.length} recurrentes activos
             </p>
           </div>
-          <div className="rounded-[1.35rem] border border-white/20 bg-white/12 p-4 backdrop-blur-2xl sm:rounded-[1.5rem] sm:p-5">
-            <p className="text-sm text-white/70">Sync cifrado</p>
-            <strong className="mt-2 block text-2xl font-black">Cloudflare KV</strong>
-            <p className="mt-2 text-sm text-white/70">Backend y base de datos listos para subir o bajar respaldos.</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button className="button-primary" type="button" onClick={onAddIncome}>
+              <CircleDollarSign size={18} />
+              Ingreso
+            </button>
+            <button className="button-secondary" type="button" onClick={onAddExpense}>
+              <Receipt size={18} />
+              Gasto
+            </button>
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5" data-tour="dashboard-metrics">
-        <MetricCard label="Ahorro actual" value={formatMoney(state.settings.currentSavings)} note={`Renta apartada: ${formatMoney(state.settings.rentReserve)}`} icon={WalletCards} />
-        <MetricCard label="Quincena activa" value={formatMoney(activePeriod?.savings || 0)} note={activePeriod?.label || "Sin quincena"} icon={CalendarClock} />
-        <MetricCard label="Pago TDC julio" value={formatMoney(Math.abs(periods.find((period) => period.id === "2026-07-h2")?.cardPayment || 0))} note="Estimado al 25 jul" icon={CreditCard} />
+        <MetricCard label="Ahorro actual" value={formatMoney(state.settings.currentSavings)} note="Saldo real registrado" icon={WalletCards} />
+        <MetricCard label="Renta apartada" value={formatMoney(state.settings.rentReserve)} note={`Meta: ${formatMoney(state.settings.monthlyRent)}`} icon={Receipt} />
+        <MetricCard label="Proximo pago TDC" value={formatMoney(cardDebt.nextPayment)} note="Pendiente calculado" icon={CalendarClock} />
         <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Total ocupado" icon={CreditCard} />
-        <MetricCard label="Cierre proyectado" value={formatMoney(periods.at(-1)?.savings || 0)} note="Noviembre 2026" icon={ChartSpline} />
+        <MetricCard label="Recurrentes activos" value={formatMoney(recurringTotal)} note={`${activeRecurring.length} cargos`} icon={ListChecks} />
       </section>
 
       {hasRealData ? <FinancialInsightsPanel insights={insights} onNavigate={onNavigate} /> : null}
@@ -2001,16 +2004,16 @@ function Dashboard({
           <h3 className="mb-4 text-xl font-black text-navy">Atencion</h3>
           <div className="grid gap-3">
             {lowSavings ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
                 {lowSavings.label} baja a <strong>{formatMoney(lowSavings.savings)}</strong>. Conviene revisar gastos variables.
               </div>
             ) : null}
             {negativeFlows ? (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm">
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm">
                 {negativeFlows} quincenas tienen flujo negativo por pagos de tarjeta.
               </div>
             ) : null}
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm">
               Cierre proyectado: <strong>{formatMoney(periods.at(-1)?.savings || 0)}</strong>.
             </div>
           </div>
@@ -2067,9 +2070,9 @@ function FinancialInsightsPanel({
         {insights.map((insight) => {
           const Icon = insight.icon;
           return (
-            <article key={insight.id} className={`rounded-[1.35rem] border p-4 shadow-card ${toneClass[insight.tone]}`}>
+            <article key={insight.id} className={`rounded-lg border p-4 shadow-card ${toneClass[insight.tone]}`}>
               <div className="flex items-start gap-3">
-                <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${iconClass[insight.tone]}`}>
+                <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg ${iconClass[insight.tone]}`}>
                   <Icon size={20} />
                 </span>
                 <div className="min-w-0">
@@ -2095,33 +2098,32 @@ function PeriodsTable({
   periods,
   compact,
   duePeriodIds,
-  onEdit,
-  onClosePayrollPeriod,
-  onReopenPayrollPeriod,
+  onClosePeriod,
+  onReopenPeriod,
   tourTarget,
 }: {
   periods: CalculatedPeriod[];
   compact?: boolean;
   duePeriodIds?: Set<string>;
-  onEdit?: (period: Period) => void;
-  onClosePayrollPeriod?: (period: Period) => void;
-  onReopenPayrollPeriod?: (period: Period) => void;
+  onClosePeriod?: (period: Period) => void;
+  onReopenPeriod?: (period: Period) => void;
   tourTarget?: string;
 }) {
+  const hasActions = Boolean(onClosePeriod || onReopenPeriod);
   return (
-    <div className={`table-scroll ${compact ? "table-scroll-compact" : ""} overflow-x-auto rounded-3xl border border-blue-100 bg-white/80`} data-tour={tourTarget}>
+    <div className={`table-scroll ${compact ? "table-scroll-compact" : ""} overflow-x-auto rounded-lg border border-blue-100 bg-white`} data-tour={tourTarget}>
       <table className="w-full border-collapse">
         <thead>
           <tr>
             <th className="table-head text-left">Quincena</th>
             <th className="table-head text-left">Rango</th>
-            {!compact ? <th className="table-head">Sueldo</th> : null}
-            {!compact ? <th className="table-head">Ingreso pareja</th> : null}
-            <th className="table-head">Gastos</th>
+            <th className="table-head">Ingresos</th>
+            <th className="table-head">Gastos debito</th>
+            {!compact ? <th className="table-head">Cargos TDC</th> : null}
             <th className="table-head">Pago TDC</th>
             <th className="table-head">Flujo</th>
             <th className="table-head">Ahorro</th>
-            {onEdit ? <th className="table-head" /> : null}
+            {hasActions ? <th className="table-head" /> : null}
           </tr>
         </thead>
         <tbody>
@@ -2129,29 +2131,24 @@ function PeriodsTable({
             <tr key={period.id} className="transition hover:bg-blue-50/70">
               <td className="table-cell text-left font-black text-navy">{period.label}</td>
               <td className="table-cell max-w-xs whitespace-normal text-left text-slate-500">{period.note}</td>
-              {!compact ? <td className="table-cell">{formatMoney(period.salary)}</td> : null}
-              {!compact ? <td className="table-cell">{formatMoney(period.partnerIncome)}</td> : null}
+              <td className={`table-cell ${toneClass(period.income)}`}>{formatMoney(period.income)}</td>
               <td className={`table-cell ${toneClass(period.cashExpenses)}`}>{formatMoney(period.cashExpenses)}</td>
+              {!compact ? <td className="table-cell text-amber-700">{formatMoney(period.creditCharges)}</td> : null}
               <td className={`table-cell ${toneClass(period.cardPayment)}`}>{formatMoney(period.cardPayment)}</td>
               <td className={`table-cell ${toneClass(period.flow)}`}>{formatMoney(period.flow)}</td>
               <td className="table-cell font-black text-navy">{formatMoney(period.savings)}</td>
-              {onEdit ? (
+              {hasActions ? (
                 <td className="table-cell">
                   <div className="flex justify-end gap-2">
                     {period.closedAt ? <span className="pill">Cerrada</span> : null}
-                    {period.closedAt && onReopenPayrollPeriod ? (
-                      <button className="button-secondary px-3 py-2" type="button" onClick={() => onReopenPayrollPeriod(period)}>
+                    {period.closedAt && onReopenPeriod ? (
+                      <button className="button-secondary px-3 py-2" type="button" onClick={() => onReopenPeriod(period)}>
                         Reabrir
                       </button>
                     ) : null}
-                    {!period.closedAt && duePeriodIds?.has(period.id) && onClosePayrollPeriod ? (
-                      <button className="button-primary px-3 py-2" type="button" onClick={() => onClosePayrollPeriod(period)}>
+                    {!period.closedAt && duePeriodIds?.has(period.id) && onClosePeriod ? (
+                      <button className="button-primary px-3 py-2" type="button" onClick={() => onClosePeriod(period)}>
                         Cerrar
-                      </button>
-                    ) : null}
-                    {!period.closedAt ? (
-                      <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(period)}>
-                        Editar
                       </button>
                     ) : null}
                   </div>
@@ -2167,24 +2164,17 @@ function PeriodsTable({
 
 function PeriodsView({
   periods,
-  state,
-  duePayrollPeriods,
-  onEdit,
-  onAdd,
-  onClosePayrollPeriod,
-  onReopenPayrollPeriod,
+  duePeriods,
+  onClosePeriod,
+  onReopenPeriod,
 }: {
   periods: CalculatedPeriod[];
-  state: AppState;
-  duePayrollPeriods: Period[];
-  onEdit: (period: Period) => void;
-  onAdd: () => void;
-  onClosePayrollPeriod: (period: Period) => void;
-  onReopenPayrollPeriod: (period: Period) => void;
+  duePeriods: Period[];
+  onClosePeriod: (period: Period) => void;
+  onReopenPeriod: (period: Period) => void;
 }) {
-  const duePeriod = duePayrollPeriods[0];
-  const duePeriodIds = new Set(duePayrollPeriods.map((period) => period.id));
-  const duePreview = duePeriod ? closingPreviewFor(state, duePeriod) : { income: 0, rentReserve: 0 };
+  const duePeriod = duePeriods[0];
+  const duePeriodIds = new Set(duePeriods.map((period) => period.id));
   const duePayday = duePeriod ? paydayForPeriod(duePeriod) : null;
   return (
     <div className="grid gap-5">
@@ -2192,13 +2182,13 @@ function PeriodsView({
         <section className="panel border-emerald-200 bg-emerald-50/70">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="eyebrow text-emerald-700">Cierre disponible</p>
+              <p className="eyebrow text-emerald-700">Lista para archivar</p>
               <h3 className="text-2xl font-black text-navy">{duePeriod.label}</h3>
               <p className="mt-2 text-sm text-emerald-950">
-                Fecha de pago: {duePayday}. Ahorro sube neto {formatMoney(duePreview.income - duePreview.rentReserve)} y renta apartada sube {formatMoney(duePreview.rentReserve)}.
+                Termino el {duePayday}. El cierre no cambia el ahorro, la renta ni la tarjeta.
               </p>
             </div>
-            <button className="button-primary" type="button" onClick={() => onClosePayrollPeriod(duePeriod)}>
+            <button className="button-primary" type="button" onClick={() => onClosePeriod(duePeriod)}>
               <Check size={18} />
               Cerrar quincena
             </button>
@@ -2209,20 +2199,15 @@ function PeriodsView({
       <section className="panel" data-tour="periods-panel">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="eyebrow">Editable</p>
-            <h3 className="text-2xl font-black text-navy">Plan quincenal</h3>
+            <p className="eyebrow">Registro</p>
+            <h3 className="text-2xl font-black text-navy">Resumen por quincena</h3>
           </div>
-          <button className="button-secondary" type="button" onClick={onAdd} data-tour="periods-add">
-            <Plus size={18} />
-            Agregar siguiente
-          </button>
         </div>
         <PeriodsTable
           periods={periods}
           duePeriodIds={duePeriodIds}
-          onEdit={onEdit}
-          onClosePayrollPeriod={onClosePayrollPeriod}
-          onReopenPayrollPeriod={onReopenPayrollPeriod}
+          onClosePeriod={onClosePeriod}
+          onReopenPeriod={onReopenPeriod}
           tourTarget="periods-table"
         />
       </section>
@@ -2233,6 +2218,7 @@ function PeriodsView({
 function TransactionsView({
   state,
   draft,
+  defaultMethod,
   onSubmit,
   onEdit,
   onDelete,
@@ -2240,69 +2226,88 @@ function TransactionsView({
 }: {
   state: AppState;
   draft: Transaction | null;
+  defaultMethod: Transaction["method"];
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onEdit: (transaction: Transaction) => void;
   onDelete: (transaction: Transaction) => void;
   onClearDraft: () => void;
 }) {
-  const transactions = [...state.transactions].reverse();
-  const openPeriods = state.periods.filter((period) => !period.closedAt);
-  const draftPeriodOpen = Boolean(draft?.periodId && openPeriods.some((period) => period.id === draft.periodId));
-  const selectedPeriodId = draftPeriodOpen ? draft?.periodId : openPeriods[0]?.id || "";
+  const [method, setMethod] = useState<Transaction["method"]>(draft?.method || defaultMethod);
+  const [category, setCategory] = useState(draft?.category || (defaultMethod === "income" ? "Nomina" : "Comida"));
+  const transactions = [...state.transactions].sort((left, right) => right.date.localeCompare(left.date));
+  const incomeCategories = ["Nomina", "Ingreso extra", "Reembolso", "Venta", "Otro ingreso"];
+  const expenseCategories = ["Comida", "Transporte", "Salud", "Servicio", "Hogar", "Mascotas", "Entretenimiento", "Otro"];
+
+  useEffect(() => {
+    const nextMethod = draft?.method || defaultMethod;
+    setMethod(nextMethod);
+    setCategory(draft?.category || (nextMethod === "income" ? "Nomina" : nextMethod === "card_payment" ? "Pago TDC" : "Comida"));
+  }, [defaultMethod, draft]);
+
+  function chooseMethod(nextMethod: Transaction["method"]) {
+    setMethod(nextMethod);
+    setCategory(nextMethod === "income" ? "Nomina" : nextMethod === "card_payment" ? "Pago TDC" : "Comida");
+  }
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(320px,.75fr)_minmax(0,1.25fr)]">
       <form key={draft?.id || "new-transaction"} className="panel self-start" onSubmit={onSubmit} data-tour="transactions-form">
-        <p className="eyebrow">Nuevo</p>
-        <h3 className="mb-5 text-2xl font-black text-navy">{draft ? "Editar movimiento" : "Movimiento"}</h3>
+        <p className="eyebrow">Registro real</p>
+        <h3 className="mb-5 text-2xl font-black text-navy">{draft ? "Editar movimiento" : "Nuevo movimiento"}</h3>
+        <input type="hidden" name="method" value={method} />
+        <div className="movement-type-grid mb-5" data-tour="transactions-method">
+          <button className={method === "income" ? "movement-type active" : "movement-type"} type="button" onClick={() => chooseMethod("income")}>
+            <CircleDollarSign size={18} />
+            Ingreso
+          </button>
+          <button className={method === "cash" ? "movement-type active" : "movement-type"} type="button" onClick={() => chooseMethod("cash")}>
+            <Receipt size={18} />
+            Debito / efectivo
+          </button>
+          <button className={method === "credit" ? "movement-type active" : "movement-type"} type="button" onClick={() => chooseMethod("credit")}>
+            <CreditCard size={18} />
+            Tarjeta
+          </button>
+          <button className={method === "card_payment" ? "movement-type active" : "movement-type"} type="button" onClick={() => chooseMethod("card_payment")}>
+            <Check size={18} />
+            Pago TDC
+          </button>
+        </div>
         <Field label="Nombre">
-          <input className="input" name="description" required placeholder="Ej. Farmacia, mandado, gasolina" defaultValue={draft?.description || ""} />
+          <input
+            className="input"
+            name="description"
+            required
+            placeholder={method === "income" ? "Ej. Nomina, reembolso, venta" : method === "card_payment" ? "Ej. Pago tarjeta julio" : "Ej. Farmacia, mandado, gasolina"}
+            defaultValue={draft?.description || ""}
+          />
         </Field>
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Monto">
             <input className="input" name="amount" type="number" step="0.01" min="0" required defaultValue={draft?.amount ?? ""} />
           </Field>
           <Field label="Fecha">
-            <input className="input" name="date" type="date" required defaultValue={draft?.date || today} />
+            <input className="input" name="date" type="date" max={today} required defaultValue={draft?.date || today} />
           </Field>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Categoria">
-            <select className="input" name="category" defaultValue={draft?.category || "Comida"}>
-              <option>Comida</option>
-              <option>Tarjeta</option>
-              <option>Servicio</option>
-              <option>Renta</option>
-              <option>Ingreso</option>
-              <option>Pago TDC</option>
-              <option>Recurrente</option>
-              <option>Otro</option>
+          <Field label={method === "income" ? "Tipo de ingreso" : "Categoria"}>
+            <select className="input" name="category" value={category} onChange={(event) => setCategory(event.target.value)} disabled={method === "card_payment"}>
+              {(method === "income" ? incomeCategories : method === "card_payment" ? ["Pago TDC"] : expenseCategories).map((option) => (
+                <option key={option}>{option}</option>
+              ))}
             </select>
           </Field>
-          <div data-tour="transactions-method">
-            <Field label="Medio">
-              <select className="input" name="method" defaultValue={draft?.method || "credit"}>
-                <option value="credit">Tarjeta de credito</option>
-                <option value="cash">Efectivo / debito</option>
-                <option value="card_payment">Pago TDC aplicado</option>
-              </select>
-            </Field>
-          </div>
+          <Field label="Quincena">
+            <input className="input" value="Se asigna por la fecha" disabled />
+          </Field>
         </div>
-        <Field label="Quincena">
-          <select className="input" name="periodId" defaultValue={selectedPeriodId} disabled={!openPeriods.length}>
-            {openPeriods.length ? null : <option value="">Sin quincenas abiertas</option>}
-            {openPeriods.map((period) => (
-              <option key={period.id} value={period.id}>
-                {period.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <label className="mb-4 flex items-center gap-3 text-sm font-black text-navy" data-tour="transactions-shared">
-          <input className="h-4 w-4" name="shared" type="checkbox" defaultChecked={Boolean(draft?.shared)} />
-          Dividir con mi pareja
-        </label>
-        <div data-tour="transactions-installments">
+        {method === "income" && category === "Nomina" && state.settings.monthlyRent > 0 ? (
+          <div className="status-row mb-4">
+            <Receipt size={17} />
+            <span>Renta apartada: {formatMoney(payrollRentReserve(state, asNumber(draft?.rentReserveAmount)))}</span>
+          </div>
+        ) : null}
+        {method === "credit" ? <div data-tour="transactions-installments">
           <Field label="Meses sin intereses">
             <select className="input" name="installments" defaultValue={String(draft?.installments || 1)}>
               <option value="1">Una exhibicion</option>
@@ -2310,7 +2315,7 @@ function TransactionsView({
               <option value="6">6 MSI</option>
             </select>
           </Field>
-        </div>
+        </div> : null}
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           <button className="button-primary w-full" type="submit">
             {draft ? <Check size={18} /> : <Plus size={18} />}
@@ -2332,13 +2337,15 @@ function TransactionsView({
           <div className="grid gap-3">
             {transactions.map((transaction) => {
               const periodClosed = isClosedPeriod(state, transaction.periodId);
+              const automatic = Boolean(transaction.sourceRecurringId);
+              const locked = periodClosed || automatic;
               const schedule = transaction.paymentSchedule?.length
                 ? transaction.paymentSchedule
                     .map((payment) => `${getPeriodLabel(state.periods, payment.periodId)}: ${formatMoney(payment.amount)}`)
                     .join(" | ")
                 : "";
               return (
-                <article key={transaction.id} className="flex flex-col gap-3 rounded-3xl border border-blue-100 bg-white/75 p-4 md:flex-row md:items-center md:justify-between">
+                <article key={transaction.id} className="movement-row">
                   <div className="min-w-0">
                     <strong className="text-navy">{transaction.description}</strong>
                     <p className="text-sm text-slate-500">
@@ -2346,17 +2353,21 @@ function TransactionsView({
                     </p>
                     <p className="text-sm text-slate-500">
                       {transactionMethodLabel(transaction.method)}
-                      {transaction.shared ? " | dividido con pareja" : ""}
+                      {automatic ? " | Automatico" : ""}
+                      {transaction.rentReserveAmount ? ` | Renta: ${formatMoney(transaction.rentReserveAmount)}` : ""}
                     </p>
                     {schedule ? <p className="text-xs text-slate-500">Pago TDC: {schedule}</p> : null}
                   </div>
                   <div className="flex items-center justify-between gap-2 md:justify-end">
-                    <span className="pill">{formatMoney(transaction.amount)}</span>
+                    <span className={`movement-amount ${transaction.method === "income" ? "income" : transaction.method === "credit" ? "credit" : "expense"}`}>
+                      {transaction.method === "income" ? "+" : transaction.method === "credit" ? "" : "-"}{formatMoney(transaction.amount)}
+                    </span>
+                    {automatic ? <span className="pill">Recurrente</span> : null}
                     {periodClosed ? <span className="pill">Histórico</span> : null}
-                    <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(transaction)} disabled={periodClosed}>
+                    <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(transaction)} disabled={locked}>
                       Editar
                     </button>
-                    <button className="button-ghost px-3 py-2 text-red-700" type="button" onClick={() => onDelete(transaction)} disabled={periodClosed}>
+                    <button className="button-ghost px-3 py-2 text-red-700" type="button" onClick={() => onDelete(transaction)} disabled={locked} aria-label={`Borrar ${transaction.description}`}>
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -2365,7 +2376,7 @@ function TransactionsView({
             })}
           </div>
         ) : (
-          <EmptyState title="Sin movimientos todavia" text="Agrega compras, gastos o ingresos para que el plan se recalcule." />
+          <EmptyState title="Sin movimientos todavia" text="Los ingresos y gastos reales apareceran aqui." />
         )}
       </section>
     </div>
@@ -2443,7 +2454,7 @@ function RecurringView({
         {recurring.length ? (
           <div className="grid gap-3">
             {recurring.map((item, index) => (
-              <article key={item.id} className="flex flex-col gap-3 rounded-3xl border border-blue-100 bg-white/75 p-4 md:flex-row md:items-center md:justify-between">
+              <article key={item.id} className="movement-row">
                 <div className="min-w-0">
                   <strong className="text-navy">{item.name}</strong>
                   <p className="text-sm text-slate-500">
@@ -2523,7 +2534,7 @@ function CardView({
         {paymentRows.length ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {paymentRows.map(({ period, planned, paid, pending }) => (
-              <article key={period.id} className="rounded-3xl border border-blue-100 bg-white/75 p-4">
+              <article key={period.id} className="rounded-lg border border-blue-100 bg-white p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <strong className="text-navy">{period.label}</strong>
@@ -2570,7 +2581,7 @@ function CardView({
           </div>
           <div className="mt-5 grid gap-3" data-tour="card-list">
             {state.cardCalendar.map((entry) => (
-              <article key={entry.month} className="flex items-center justify-between gap-3 rounded-3xl border border-blue-100 bg-white/75 p-4">
+              <article key={entry.month} className="flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-white p-4">
                 <div className="min-w-0">
                   <strong className="text-navy">{entry.month}</strong>
                   <p className="text-sm text-slate-500">Parte tuya: {formatMoney(entry.userPart)}</p>
@@ -2585,7 +2596,7 @@ function CardView({
           <h3 className="mb-5 text-2xl font-black text-navy">Deuda estimada</h3>
           <div className="grid gap-3">
             {state.cardCalendar.map((entry) => (
-              <article key={entry.month} className="rounded-3xl border border-blue-100 bg-white/75 p-4">
+              <article key={entry.month} className="rounded-lg border border-blue-100 bg-white p-4">
                 <strong className="text-navy">{entry.month}</strong>
                 <p className="mt-2 text-sm">
                   Saldo no recurrente: <span className={entry.debt <= 0 ? "money-positive" : "money-negative"}>{formatMoney(entry.debt)}</span>
@@ -2648,7 +2659,7 @@ function ReportsView({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="table-scroll overflow-x-auto rounded-3xl border border-blue-100 bg-white/80" data-tour="reports-table">
+      <div className="table-scroll overflow-x-auto rounded-lg border border-blue-100 bg-white" data-tour="reports-table">
         <table className="w-full border-collapse">
           <thead>
             <tr>
@@ -2733,25 +2744,17 @@ function SettingsView({
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <Field label="Ahorro actual"><input className="input" name="currentSavings" type="number" step="0.01" defaultValue={settings.currentSavings} /></Field>
           <Field label="Renta apartada fuera del ahorro"><input className="input" name="rentReserve" type="number" step="0.01" defaultValue={settings.rentReserve} /></Field>
-          <Field label="Sueldo quincenal"><input className="input" name="salary" type="number" step="0.01" defaultValue={settings.salary} /></Field>
           <Field label="Renta mensual"><input className="input" name="monthlyRent" type="number" step="0.01" defaultValue={settings.monthlyRent} /></Field>
-          <Field label="Comida TDC por defecto"><input className="input" name="defaultFood" type="number" step="0.01" defaultValue={settings.defaultFood} /></Field>
-          <Field label="ChatGPT mensual TDC"><input className="input" name="chatGpt" type="number" step="0.01" defaultValue={settings.chatGpt} /></Field>
           <Field label="Dia de corte TDC"><input className="input" name="cutoffDay" type="number" min="1" max="31" defaultValue={settings.cutoffDay} /></Field>
           <Field label="Dia limite pago TDC"><input className="input" name="dueDay" type="number" min="1" max="31" defaultValue={settings.dueDay} /></Field>
         </div>
-        <div className="mt-6 rounded-[1.4rem] border border-blue-100 bg-blue-50/50 p-4">
+        <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50/50 p-4">
           <p className="eyebrow">Base de tarjeta</p>
           <p className="mt-2 text-sm text-slate-500">
             El saldo utilizado debe coincidir con lo que muestra tu banco como credito usado total, no solo con el corte. Al agregar o borrar compras TDC, este saldo se ajusta con el monto completo.
           </p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-4 max-w-md">
             <Field label="Saldo utilizado TDC"><input className="input" name="usedCreditBalance" type="number" step="0.01" defaultValue={settings.usedCreditBalance} /></Field>
-            <Field label="Adeudo previo TDC"><input className="input" name="previousCardDebt" type="number" step="0.01" defaultValue={settings.previousCardDebt} /></Field>
-            <Field label="Pago TDC aplicado"><input className="input" name="previousCardPayment" type="number" step="0.01" defaultValue={settings.previousCardPayment} /></Field>
-            <Field label="Pago con puntos"><input className="input" name="pointsPayment" type="number" step="0.01" defaultValue={settings.pointsPayment} /></Field>
-            <Field label="Compras TDC extra"><input className="input" name="newJulyPurchases" type="number" step="0.01" defaultValue={settings.newJulyPurchases} /></Field>
-            <Field label="Saldo no recurrente"><input className="input" name="nonRecurringBalance" type="number" step="0.01" defaultValue={settings.nonRecurringBalance} /></Field>
           </div>
         </div>
         <button className="button-primary mt-5" type="submit" data-tour="settings-save">
@@ -2852,8 +2855,8 @@ function ManualView({
   const flow = [
     "Importa tu respaldo privado o captura tus ajustes base.",
     "Revisa Inicio para ver el panorama y alertas.",
-    "Ajusta Quincenas si cambio renta, sueldo, comida o pago TDC.",
-    "Captura Movimientos nuevos para recalcular sin romper el plan.",
+    "Registra cada ingreso o gasto real en Movimientos.",
+    "Revisa Quincenas para confirmar en que periodo quedo.",
     "Exporta JSON cuando termines cambios importantes.",
   ];
 
@@ -2862,14 +2865,14 @@ function ManualView({
       <section className="guide-hero" data-tour="guide-hero">
         <div className="relative z-[1] max-w-3xl">
           <p className="eyebrow text-white/70">Manual dinamico</p>
-          <h3 className="mt-3 text-3xl font-black leading-none tracking-[-0.05em] text-white sm:text-4xl md:text-6xl">
+          <h3 className="mt-3 text-3xl font-black leading-none text-white sm:text-4xl md:text-5xl">
             Guia practica para mover tu plan sin perderte.
           </h3>
           <p className="mt-4 text-white/78">
             Cada pantalla tiene una guia rapida, que puedes modificar y un paso a paso. Usa esto como mapa cuando estes actualizando gastos o revisando la tarjeta.
           </p>
         </div>
-        <div className="relative z-[1] rounded-[1.35rem] border border-white/20 bg-white/12 p-4 text-white backdrop-blur-2xl sm:rounded-[1.5rem] sm:p-5">
+        <div className="relative z-[1] rounded-lg border border-white/20 bg-white/10 p-4 text-white sm:p-5">
           <Compass className="mb-4" />
           <strong className="block text-2xl font-black">Ruta sugerida</strong>
           <p className="mt-2 text-sm text-white/70">Empieza por el estado general y baja al detalle solo si algo no cuadra.</p>
@@ -2900,7 +2903,7 @@ function ManualView({
             const Icon = topic.icon;
             return (
               <button key={topic.id} className="tour-step-card" type="button" onClick={() => onStartTour(topic.id)}>
-                <span className="grid h-9 w-9 place-items-center rounded-2xl bg-gradient-to-br from-ocean to-teal text-sm font-black text-white">
+                <span className="grid h-9 w-9 place-items-center rounded-lg bg-ocean text-sm font-black text-white">
                   <Icon size={17} />
                 </span>
                 <span>
@@ -2919,8 +2922,8 @@ function ManualView({
           <h3 className="mb-5 text-2xl font-black text-navy">Flujo recomendado</h3>
           <div className="grid gap-3">
             {flow.map((step, index) => (
-              <div key={step} className="flex gap-3 rounded-3xl border border-blue-100 bg-white/75 p-4">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-ocean to-teal text-sm font-black text-white">
+              <div key={step} className="flex gap-3 rounded-lg border border-blue-100 bg-white p-4">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-ocean text-sm font-black text-white">
                   {index + 1}
                 </span>
                 <p className="text-sm text-slate-600">{step}</p>
@@ -2933,7 +2936,7 @@ function ManualView({
           <p className="eyebrow">Atajo mental</p>
           <h3 className="mb-5 text-2xl font-black text-navy">Que pantalla uso?</h3>
           <div className="grid gap-3 md:grid-cols-2">
-            <MiniGuide title="Quiero cambiar mi sueldo/renta" text="Ve a Quincenas o Ajustes, segun si es algo puntual o permanente." />
+            <MiniGuide title="Recibi dinero" text="Ve a Movimientos y elige Ingreso; Nomina aparta renta automaticamente." />
             <MiniGuide title="Hice una compra nueva" text="Ve a Movimientos y elige tarjeta, debito o MSI." />
             <MiniGuide title="Quiero respaldar" text="Ve a Reportes para JSON/CSV o a Ajustes para sync cifrado." />
             <MiniGuide title="No entiendo un numero" text="Abre Ayuda en esa pantalla y revisa que modifica cada campo." />
@@ -2946,7 +2949,7 @@ function ManualView({
           const Icon = topic.icon;
           return (
             <article key={topic.id} className="guide-card">
-              <div className={`mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br ${topic.accent} text-white shadow-lg`}>
+              <div className="mb-4 grid h-12 w-12 place-items-center rounded-lg bg-ocean text-white">
                 <Icon size={22} />
               </div>
               <h4 className="text-xl font-black text-navy">{topic.title}</h4>
@@ -2975,7 +2978,7 @@ function ManualView({
 
 function MiniGuide({ title, text }: { title: string; text: string }) {
   return (
-    <div className="rounded-3xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 p-4">
+    <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-4">
       <strong className="text-navy">{title}</strong>
       <p className="mt-2 text-sm text-slate-500">{text}</p>
     </div>
@@ -2997,13 +3000,13 @@ function GuideModal({
   return (
     <Modal open={open} onClose={onClose}>
       <div className="max-h-[85dvh] overflow-y-auto p-4 sm:p-6">
-        <div className={`rounded-[1.35rem] bg-gradient-to-br ${topic.accent} p-4 text-white shadow-glow sm:rounded-[1.5rem] sm:p-5`}>
+        <div className="rounded-lg bg-navy p-4 text-white shadow-card sm:p-5">
           <div className="flex items-start gap-4">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white/20">
               <Icon size={24} />
             </span>
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-white/70">Guia rapida</p>
+              <p className="text-xs font-black uppercase text-white/70">Guia rapida</p>
               <h3 className="mt-1 text-3xl font-black">{topic.title}</h3>
               <p className="mt-2 text-sm text-white/78">{topic.summary}</p>
             </div>
@@ -3011,26 +3014,26 @@ function GuideModal({
         </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <section className="rounded-3xl border border-blue-100 bg-white/75 p-4 sm:p-5">
+          <section className="rounded-lg border border-blue-100 bg-white p-4 sm:p-5">
             <h4 className="flex items-center gap-2 font-black text-navy">
               <Lightbulb size={18} />
               Que puedes modificar
             </h4>
             <ul className="mt-4 grid gap-2 text-sm text-slate-600">
               {topic.editable.map((item) => (
-                <li key={item} className="rounded-2xl bg-blue-50 px-3 py-2">{item}</li>
+                <li key={item} className="rounded-lg bg-blue-50 px-3 py-2">{item}</li>
               ))}
             </ul>
           </section>
 
-          <section className="rounded-3xl border border-blue-100 bg-white/75 p-4 sm:p-5">
+          <section className="rounded-lg border border-blue-100 bg-white p-4 sm:p-5">
             <h4 className="flex items-center gap-2 font-black text-navy">
               <Compass size={18} />
               Paso a paso
             </h4>
             <ol className="mt-4 grid gap-2 text-sm text-slate-600">
               {topic.steps.map((step, index) => (
-                <li key={step} className="flex gap-2 rounded-2xl bg-white px-3 py-2">
+                <li key={step} className="flex gap-2 rounded-lg bg-white px-3 py-2">
                   <span className="font-black text-teal">{index + 1}.</span>
                   <span>{step}</span>
                 </li>
@@ -3039,7 +3042,7 @@ function GuideModal({
           </section>
         </div>
 
-        <div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+        <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
           <strong>Tip:</strong> {topic.tip}
         </div>
 
@@ -3129,15 +3132,15 @@ function GuidedTourPanel({
   return (
     <div className="pointer-events-none fixed inset-0 z-[95]">
       <SpotlightOverlay rect={spotlightRect} />
-      <aside className="tour-panel pointer-events-auto absolute w-[min(28rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto overflow-x-hidden rounded-[1.5rem] border border-white/70 bg-white/95 shadow-glow backdrop-blur-2xl sm:rounded-[2rem]" style={panelStyle}>
-        <div className="bg-gradient-to-br from-navy via-ocean to-teal p-4 text-white sm:p-5">
+      <aside className="tour-panel pointer-events-auto absolute w-[min(28rem,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200 bg-white shadow-card" style={panelStyle}>
+        <div className="bg-navy p-4 text-white sm:p-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex gap-3">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white/20">
                 <Icon size={24} />
               </span>
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-white/70">
+                <p className="text-xs font-black uppercase text-white/70">
                   Paso {stepIndex + 1} de {totalSteps} | {nav.label}
                 </p>
                 <h3 className="mt-1 text-xl font-black sm:text-2xl">{step.title}</h3>
@@ -3154,15 +3157,15 @@ function GuidedTourPanel({
         </div>
 
         <div className="grid gap-3 p-4 sm:gap-4 sm:p-5">
-          <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-3 sm:rounded-3xl sm:p-4">
+          <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3 sm:p-4">
             <p className="eyebrow">Mira esto</p>
             <p className="mt-2 text-sm text-slate-600">{step.focus}</p>
           </div>
-          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 sm:rounded-3xl sm:p-4">
+          <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 sm:p-4">
             <p className="eyebrow text-emerald-700">Haz esto</p>
             <p className="mt-2 text-sm text-emerald-950">{step.action}</p>
           </div>
-          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 sm:rounded-3xl sm:p-4">
+          <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 sm:p-4">
             <p className="eyebrow text-amber-700">Resultado esperado</p>
             <p className="mt-2 text-sm text-amber-950">{step.outcome}</p>
           </div>
@@ -3216,7 +3219,7 @@ function QuickActionsModal({
         <p className="mt-2 text-sm text-slate-500">Atajos para moverte sin buscar entre secciones.</p>
         <div className="mt-6 grid gap-3 md:grid-cols-2">
           <ActionTile title="Nuevo movimiento" text="Agregar gasto, ingreso o compra MSI." onClick={() => onView("transactions")} />
-          <ActionTile title="Editar quincenas" text="Ajustar renta, comida, sueldo o pagos TDC." onClick={() => onView("periods")} />
+          <ActionTile title="Revisar quincenas" text="Ver ingresos, gastos y pagos agrupados por fecha." onClick={() => onView("periods")} />
           <ActionTile title="Sync y ajustes" text="Configurar respaldo cifrado y supuestos." onClick={() => onView("settings")} />
           <ActionTile title="Tour guiado" text="La app te lleva paso a paso por cada pantalla." onClick={onStartTour} />
           <ActionTile title="Manual de uso" text="Ver pasos guiados y que modifica cada pantalla." onClick={() => onView("guide")} />
@@ -3229,57 +3232,9 @@ function QuickActionsModal({
 
 function ActionTile({ title, text, onClick }: { title: string; text: string; onClick: () => void }) {
   return (
-    <button className="rounded-3xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-5 text-left transition hover:-translate-y-1 hover:border-ocean/50 hover:shadow-card" type="button" onClick={onClick}>
+    <button className="rounded-lg border border-blue-100 bg-white p-5 text-left transition hover:border-ocean/50 hover:bg-blue-50 hover:shadow-card" type="button" onClick={onClick}>
       <strong className="text-navy">{title}</strong>
       <span className="mt-2 block text-sm text-slate-500">{text}</span>
     </button>
-  );
-}
-
-function PeriodModal({
-  period,
-  onClose,
-  onChange,
-  onSave,
-}: {
-  period: Period | null;
-  onClose: () => void;
-  onChange: (period: Period) => void;
-  onSave: () => void;
-}) {
-  if (!period) return null;
-  const readOnly = Boolean(period.closedAt);
-  const update = (patch: Partial<Period>) => onChange({ ...period, ...patch });
-  return (
-    <Modal open={Boolean(period)} onClose={onClose}>
-      <div className="max-h-[85dvh] overflow-y-auto p-6">
-        <p className="eyebrow">Editar</p>
-        <h3 className="mt-2 text-2xl font-black text-navy">Quincena</h3>
-        {period.closedAt ? (
-          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
-            Cerrada el {period.closedAt}. Se aplicaron {formatMoney(period.appliedIncome || 0)} al ingreso y {formatMoney(period.appliedRentReserve || 0)} al apartado de renta.
-          </div>
-        ) : null}
-        <div className="mt-5 grid gap-3">
-          <Field label="Quincena"><input className="input" value={period.label} onChange={(event) => update({ label: event.target.value })} disabled={readOnly} /></Field>
-          <Field label="Rango / nota"><textarea className="input min-h-24" value={period.note} onChange={(event) => update({ note: event.target.value })} disabled={readOnly} /></Field>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Sueldo"><input className="input" value={period.salary} onChange={(event) => update({ salary: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
-            <Field label="Ingreso extra"><input className="input" value={period.extraIncome} onChange={(event) => update({ extraIncome: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
-            <Field label="Ingreso pareja"><input className="input" value={period.partnerIncome} onChange={(event) => update({ partnerIncome: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
-            <Field label="Renta / apartado"><input className="input" value={period.rent} onChange={(event) => update({ rent: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
-            <Field label="Servicios debito"><input className="input" value={period.debitServices} onChange={(event) => update({ debitServices: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
-            <Field label="Comida TDC"><input className="input" value={period.foodCredit} onChange={(event) => update({ foodCredit: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
-            <Field label="Otros cargos TDC"><input className="input" value={period.otherCredit} onChange={(event) => update({ otherCredit: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
-            <Field label="ChatGPT TDC"><input className="input" value={period.chatGptCredit} onChange={(event) => update({ chatGptCredit: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
-            <Field label="Pago tarjeta"><input className="input" value={period.cardPayment} onChange={(event) => update({ cardPayment: asNumber(event.target.value) })} type="number" step="0.01" disabled={readOnly} /></Field>
-          </div>
-        </div>
-        <div className="mt-6 flex justify-end gap-3">
-          <button className="button-ghost" type="button" onClick={onClose}>Cancelar</button>
-          {readOnly ? null : <button className="button-primary" type="button" onClick={onSave}>Guardar</button>}
-        </div>
-      </div>
-    </Modal>
   );
 }

@@ -4,129 +4,148 @@ import {
   buildPaymentScheduleFor,
   calculatePeriodsFor,
   closePeriodFor,
-  duePayrollPeriodsFor,
+  duePeriodsFor,
   materializeDueRecurringTransactions,
   normalizeState,
+  periodIdForDate,
+  reconcileRecurringTransactions,
   reopenPeriodFor,
 } from "../pwa-finanzas/src/lib/calculations.ts";
 import { cloneSeed } from "../pwa-finanzas/src/lib/seed.ts";
 
 const state = cloneSeed();
-state.settings.currentSavings = 100;
+state.settings.currentSavings = 1000;
 state.settings.rentReserve = 0;
-state.settings.salary = 8000;
 state.settings.monthlyRent = 3500;
-state.settings.defaultFood = 1200;
+state.settings.usedCreditBalance = 1000;
 state.periods = [
   {
-    ...state.periods[0],
-    id: "2026-06-h2",
-    salary: 0,
-    extraIncome: 0,
-    rent: 0,
-    lockedBase: true,
-  },
-  {
+    ...state.periods[1],
     id: "2026-07-h1",
     month: "Julio",
     label: "1a julio",
-    note: "Sueldo del 15.",
-    salary: 8000,
-    extraIncome: 0,
-    partnerIncome: 0,
-    rent: -1750,
-    debitServices: 0,
-    foodCredit: 1200,
-    otherCredit: 0,
-    chatGptCredit: 0,
-    cardPayment: 0,
+    note: "1 al 15",
   },
   {
+    ...state.periods[2],
     id: "2026-07-h2",
     month: "Julio",
     label: "2a julio",
-    note: "Sueldo del 15.",
-    salary: 8000,
-    extraIncome: 0,
-    partnerIncome: 0,
-    rent: -1750,
-    debitServices: 0,
-    foodCredit: 1200,
-    otherCredit: 0,
-    chatGptCredit: 0,
-    cardPayment: 0,
+    note: "16 al 31",
+  },
+  {
+    ...state.periods[2],
+    id: "2026-08-h2",
+    month: "Agosto",
+    label: "2a agosto",
+    note: "16 al 31",
   },
 ];
 
-const due = duePayrollPeriodsFor(state, "2026-06-30");
-assert.equal(due.length, 1);
-assert.equal(due[0].id, "2026-06-h2");
+assert.equal(periodIdForDate(state, "2026-07-11"), "2026-07-h1");
+assert.equal(periodIdForDate(state, "2026-07-25"), "2026-07-h2");
 
-const result = closePeriodFor(state, "2026-06-h2", "2026-06-30");
-assert.equal(result.state.settings.currentSavings, 6350);
-assert.equal(result.state.settings.rentReserve, 1750);
-assert.equal(result.state.periods.find((period) => period.id === "2026-06-h2")?.salary, 0);
-assert.equal(result.state.periods.find((period) => period.id === "2026-06-h2")?.closedAt, "2026-06-30");
-assert.equal(result.state.periods.find((period) => period.id === "2026-06-h2")?.appliedIncome, 8000);
-assert.equal(result.state.periods.at(-1)?.id, "2026-08-h1");
-assert.equal(result.state.periods.at(-1)?.salary, 8000);
-
-const calculated = calculatePeriodsFor(result.state);
-assert.equal(calculated.find((period) => period.id === "2026-06-h2")?.savings, 100);
-assert.equal(calculated.find((period) => period.id === "2026-07-h1")?.savings, 6350);
-
-const foodTransaction = {
-  id: "food-tx",
-  date: "2026-07-01",
-  description: "Mandado",
-  amount: 300,
-  category: "Comida",
-  method: "credit",
+const payroll = {
+  id: "payroll",
+  date: "2026-07-11",
+  description: "Nomina",
+  amount: 8000,
+  category: "Nomina",
+  method: "income",
   periodId: "2026-07-h1",
   shared: false,
   installments: 1,
+  affectsSavings: true,
+  rentReserveAmount: 1750,
 };
-const foodState = applyTransactionToState(result.state, foodTransaction, 1);
-const foodPeriod = foodState.periods.find((period) => period.id === "2026-07-h1");
-assert.equal(foodPeriod?.foodCredit, 1500);
-assert.equal(foodPeriod?.otherCredit, 0);
+const withPayroll = applyTransactionToState({ ...state, transactions: [payroll] }, payroll, 1);
+assert.equal(withPayroll.settings.currentSavings, 7250);
+assert.equal(withPayroll.settings.rentReserve, 1750);
+assert.equal(calculatePeriodsFor(withPayroll)[0].income, 8000);
 
-const otherTransaction = {
-  ...foodTransaction,
-  id: "other-tx",
-  description: "Compra nueva",
-  amount: 450,
-  category: "Electronica",
-};
-const otherState = applyTransactionToState(foodState, otherTransaction, 1);
-const otherPeriod = otherState.periods.find((period) => period.id === "2026-07-h1");
-assert.equal(otherPeriod?.foodCredit, 1500);
-assert.equal(otherPeriod?.otherCredit, 450);
-assert.equal(calculatePeriodsFor(otherState).find((period) => period.id === "2026-07-h1")?.creditCharges, 1950);
+const withoutPayroll = applyTransactionToState({ ...withPayroll, transactions: [] }, payroll, -1);
+assert.equal(withoutPayroll.settings.currentSavings, 1000);
+assert.equal(withoutPayroll.settings.rentReserve, 0);
 
-const cashTransaction = {
-  id: "cash-tx",
-  date: "2026-07-01",
-  description: "Gasto debito",
+const cashExpense = {
+  id: "cash",
+  date: "2026-07-11",
+  description: "Super",
   amount: 200,
-  category: "Prueba",
+  category: "Comida",
   method: "cash",
   periodId: "2026-07-h1",
   shared: false,
   installments: 1,
+  affectsSavings: true,
+  rentReserveAmount: 0,
 };
-const cashState = applyTransactionToState(result.state, cashTransaction, 1);
-assert.equal(cashState.settings.currentSavings, 6150);
-const cashDeletedState = applyTransactionToState(cashState, cashTransaction, -1);
-assert.equal(cashDeletedState.settings.currentSavings, 6350);
+const withCash = applyTransactionToState({ ...state, transactions: [cashExpense] }, cashExpense, 1);
+assert.equal(withCash.settings.currentSavings, 800);
+assert.equal(calculatePeriodsFor(withCash)[0].cashExpenses, -200);
+
+const creditPurchase = {
+  id: "credit",
+  date: "2026-07-01",
+  description: "Compra",
+  amount: 450,
+  category: "Hogar",
+  method: "credit",
+  periodId: "2026-07-h1",
+  shared: false,
+  installments: 1,
+  affectsSavings: false,
+  rentReserveAmount: 0,
+};
+creditPurchase.paymentSchedule = buildPaymentScheduleFor(state, creditPurchase);
+const withCredit = applyTransactionToState({ ...state, transactions: [creditPurchase] }, creditPurchase, 1);
+assert.equal(withCredit.settings.currentSavings, 1000);
+assert.equal(withCredit.settings.usedCreditBalance, 1450);
+assert.equal(calculatePeriodsFor(withCredit)[0].creditCharges, 450);
+assert.equal(calculatePeriodsFor(withCredit)[1].cardPayment, -450);
+
+const afterCutoffPurchase = {
+  ...creditPurchase,
+  id: "after-cutoff",
+  date: "2026-07-11",
+};
+assert.equal(buildPaymentScheduleFor(state, afterCutoffPurchase)[0]?.periodId, "2026-08-h2");
+
+const cardPayment = {
+  id: "card-payment",
+  date: "2026-07-25",
+  description: "Pago TDC",
+  amount: 450,
+  category: "Pago TDC",
+  method: "card_payment",
+  periodId: "2026-07-h2",
+  shared: false,
+  installments: 1,
+  affectsSavings: true,
+  rentReserveAmount: 0,
+};
+const afterCardPayment = applyTransactionToState(
+  { ...withCredit, transactions: [...withCredit.transactions, cardPayment] },
+  cardPayment,
+  1,
+);
+assert.equal(afterCardPayment.settings.currentSavings, 550);
+assert.equal(afterCardPayment.settings.usedCreditBalance, 1000);
+
+const due = duePeriodsFor(state, "2026-07-15");
+assert.equal(due[0].id, "2026-07-h1");
+const closed = closePeriodFor(state, "2026-07-h1", "2026-07-15");
+assert.equal(closed.state.settings.currentSavings, 1000);
+assert.equal(closed.state.periods[0].closingSavings, 1000);
+assert.equal(reopenPeriodFor(closed.state, "2026-07-h1").settings.currentSavings, 1000);
 
 const recurringState = {
-  ...result.state,
+  ...withPayroll,
   recurringLastAppliedDate: "2026-07-01",
   recurring: [
     {
-      id: "debit-recurring",
-      name: "Servicio debito",
+      id: "google-one",
+      name: "Google One",
       amount: 250,
       day: 2,
       method: "debit",
@@ -134,69 +153,36 @@ const recurringState = {
     },
   ],
 };
-const recurringResult = materializeDueRecurringTransactions(recurringState, "2026-07-02");
-assert.equal(recurringResult.added.length, 1);
-assert.equal(recurringResult.added[0].date, "2026-07-02");
-assert.equal(recurringResult.added[0].method, "cash");
-assert.equal(recurringResult.added[0].skipPlanImpact, false);
-assert.equal(recurringResult.state.settings.currentSavings, 6100);
-assert.equal(recurringResult.state.periods.find((period) => period.id === "2026-07-h1")?.debitServices, -250);
-assert.equal(calculatePeriodsFor(recurringResult.state).find((period) => period.id === "2026-07-h1")?.savings, 6100);
+const charged = materializeDueRecurringTransactions(recurringState, "2026-07-02");
+assert.equal(charged.added.length, 1);
+assert.equal(charged.state.settings.currentSavings, 7000);
 
-const migratedRecurring = normalizeState({
-  ...result.state,
-  transactions: [{ ...recurringResult.added[0], skipPlanImpact: true }],
-});
-assert.equal(migratedRecurring.transactions[0].skipPlanImpact, false);
-assert.equal(migratedRecurring.settings.currentSavings, 6100);
-assert.equal(migratedRecurring.periods.find((period) => period.id === "2026-07-h1")?.debitServices, -250);
+const movedToTomorrow = reconcileRecurringTransactions(
+  { ...charged.state, recurring: [{ ...charged.state.recurring[0], day: 3 }] },
+  "2026-07-02",
+  ["google-one"],
+);
+assert.equal(movedToTomorrow.removed.length, 1);
+assert.equal(movedToTomorrow.added.length, 0);
+assert.equal(movedToTomorrow.state.settings.currentSavings, 7250);
+assert.equal(calculatePeriodsFor(movedToTomorrow.state)[0].cashExpenses, 0);
 
-const manualCardState = {
-  ...result.state,
-  settings: { ...result.state.settings, usedCreditBalance: 1000 },
-};
-const manualCreditState = applyTransactionToState(manualCardState, otherTransaction, 1);
-assert.equal(manualCreditState.settings.usedCreditBalance, 1450);
-const manualCreditDeletedState = applyTransactionToState(manualCreditState, otherTransaction, -1);
-assert.equal(manualCreditDeletedState.settings.usedCreditBalance, 1000);
+const chargedTomorrow = materializeDueRecurringTransactions(movedToTomorrow.state, "2026-07-03");
+assert.equal(chargedTomorrow.added.length, 1);
+assert.equal(chargedTomorrow.added[0].date, "2026-07-03");
+assert.equal(chargedTomorrow.state.settings.currentSavings, 7000);
 
-const legacyPeriod = { ...state.periods[1], foodCredit: 5055 };
-delete legacyPeriod.otherCredit;
-const migrated = normalizeState({
+const legacy = normalizeState({
   ...state,
-  settings: { ...state.settings, defaultFood: 1700 },
-  periods: [legacyPeriod],
+  version: 1,
+  periods: [{ ...state.periods[0], salary: 8000, partnerIncome: 900, foodCredit: 3400, debitServices: -500 }],
+  transactions: [{ ...cardPayment, affectsSavings: undefined }],
 });
-assert.equal(migrated.periods[0].foodCredit, 1700);
-assert.equal(migrated.periods[0].otherCredit, 3355);
-assert.equal(calculatePeriodsFor(migrated)[0].creditCharges, 5055);
+assert.equal(legacy.version, 2);
+assert.equal(legacy.periods[0].salary, 0);
+assert.equal(legacy.periods[0].partnerIncome, 0);
+assert.equal(legacy.periods[0].foodCredit, 0);
+assert.equal(legacy.periods[0].debitServices, 0);
+assert.equal(legacy.transactions[0].affectsSavings, false);
 
-const closedTransaction = {
-  id: "closed-tx",
-  date: "2026-06-30",
-  description: "No debe tocar cerrada",
-  amount: 500,
-  category: "Prueba",
-  method: "credit",
-  periodId: "2026-06-h2",
-  shared: false,
-  installments: 1,
-};
-assert.equal(buildPaymentScheduleFor(result.state, closedTransaction).length, 0);
-assert.equal(applyTransactionToState(result.state, closedTransaction, 1), result.state);
-
-const reopened = reopenPeriodFor(result.state, "2026-06-h2");
-assert.equal(reopened.settings.currentSavings, 100);
-assert.equal(reopened.settings.rentReserve, 0);
-assert.equal(reopened.periods.find((period) => period.id === "2026-06-h2")?.closedAt, undefined);
-assert.equal(reopened.periods.find((period) => period.id === "2026-06-h2")?.salary, 8000);
-assert.equal(reopened.periods.find((period) => period.id === "2026-06-h2")?.rent, -1750);
-
-const nextDue = duePayrollPeriodsFor(result.state, "2026-07-15");
-assert.equal(nextDue[0].id, "2026-07-h1");
-
-const second = closePeriodFor(result.state, "2026-06-h2", "2026-06-30");
-assert.equal(second.state.settings.currentSavings, 6350);
-assert.equal(second.state.periods.length, result.state.periods.length);
-
-console.log("Period rollover verification OK");
+console.log("Manual ledger and recurring verification OK");

@@ -19,14 +19,16 @@ La app publica no debe contener datos personales. Los importes reales viven en r
 
 ## Funcionalidad principal
 
-- Plan por quincenas, respetando que cada sueldo financia la quincena siguiente.
+- Ingresos y gastos reales registrados como movimientos.
 - Ahorro actual y renta apartada por separado.
-- Cierre de quincena para aplicar sueldo, separar renta y agregar la siguiente quincena estimada.
-- Movimientos de tarjeta de credito, efectivo o debito.
+- Nomina manual con apartado automatico de media renta.
+- Cierre de quincena que solo protege el historial y agrega el siguiente periodo.
+- Movimientos de ingreso, tarjeta de credito, efectivo, debito y pago TDC.
 - Pagos con tarjeta a una exhibicion, 3 MSI o 6 MSI.
 - Saldo utilizado de tarjeta, adicional al pago al corte.
-- Pagos de efectivo/debito descontados del ahorro cuando aplican a la quincena base.
-- Compras compartidas con pareja para separar total cargado vs carga personal.
+- Pagos de efectivo/debito y pagos TDC descontados del ahorro al registrarse.
+- Reembolsos registrados como ingresos, sin calculos de pareja.
+- Recurrentes materializados solo al llegar su fecha y reconciliados al editarlos.
 - Reportes mensuales con graficas y exportacion CSV/JSON.
 - Manual interno, ayuda contextual y tours guiados por modulo.
 - Consejos financieros accionables calculados desde el estado actual.
@@ -40,11 +42,11 @@ La explicacion completa esta en [docs/FINANCIAL_MODEL.md](docs/FINANCIAL_MODEL.m
 
 Resumen corto:
 
-- `settings.currentSavings` es el ahorro real de arranque.
-- La primera quincena representa el estado actual; por eso no se recalcula completa como una quincena futura.
-- Un movimiento de efectivo/debito en la primera quincena baja `currentSavings` directamente.
+- `settings.currentSavings` es el ahorro real disponible.
+- Cada ingreso real aumenta el ahorro; Nomina tambien aparta media renta.
+- Un movimiento de efectivo/debito o pago TDC baja `currentSavings` directamente.
 - Una compra de tarjeta no baja el ahorro al capturarla; genera pagos futuros de TDC.
-- Al cerrar una quincena, el sueldo se aplica al ahorro y la renta pasa al apartado; al pagar renta, se restablece ese apartado desde Ajustes.
+- Al cerrar una quincena no cambian saldos; al pagar renta, se restablece el apartado desde Ajustes.
 - El saldo utilizado de TDC se captura como el numero real que muestra el banco; si esta en cero, la app usa los campos legacy como respaldo.
 
 ## Desarrollo local
