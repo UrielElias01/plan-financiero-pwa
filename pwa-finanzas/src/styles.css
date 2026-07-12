@@ -5,7 +5,7 @@
 @layer base {
   :root {
     color: #102033;
-    background: #f4f6f8;
+    background: #edf2f6;
     font-family:
       Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
@@ -18,7 +18,7 @@
     min-height: 100dvh;
     margin: 0;
     overflow-x: hidden;
-    background: #f4f6f8;
+    background: #edf2f6;
   }
 
   body::before {
@@ -39,7 +39,8 @@
 
 @layer components {
   .glass {
-    @apply border border-slate-200 bg-white shadow-card;
+    @apply border border-slate-200 bg-white;
+    box-shadow: 0 8px 28px rgb(31 78 120 / 9%);
   }
 
   .button {
@@ -48,10 +49,12 @@
 
   .button-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-lg bg-ocean px-4 py-2.5 text-sm font-black text-white transition hover:bg-navy focus:outline-none focus:ring-4 focus:ring-ocean/20;
+    box-shadow: 0 8px 20px rgb(46 117 182 / 20%);
   }
 
   .button-secondary {
     @apply inline-flex items-center justify-center gap-2 rounded-lg bg-teal px-4 py-2.5 text-sm font-black text-white transition hover:bg-emerald-800 focus:outline-none focus:ring-4 focus:ring-ocean/20;
+    box-shadow: 0 8px 20px rgb(15 127 131 / 18%);
   }
 
   .button-ghost {
@@ -83,10 +86,62 @@
 
   .panel {
     @apply glass relative overflow-hidden rounded-lg p-5;
+    border-top-color: rgb(203 213 225);
   }
 
   .metric-card {
-    @apply glass relative overflow-hidden rounded-lg p-5 transition hover:border-ocean/50;
+    @apply glass relative overflow-hidden rounded-lg border-t-4 p-5 transition;
+    container-type: inline-size;
+  }
+
+  .metric-icon {
+    @apply grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-blue-50 text-navy transition;
+  }
+
+  .metric-card:nth-child(1) {
+    @apply border-t-emerald-600;
+  }
+
+  .metric-card:nth-child(1) .metric-icon {
+    @apply bg-emerald-50 text-emerald-700;
+  }
+
+  .metric-card:nth-child(2) {
+    @apply border-t-teal;
+  }
+
+  .metric-card:nth-child(2) .metric-icon {
+    @apply bg-teal/10 text-teal;
+  }
+
+  .metric-card:nth-child(3) {
+    @apply border-t-amber-500;
+  }
+
+  .metric-card:nth-child(3) .metric-icon {
+    @apply bg-amber-50 text-amber-700;
+  }
+
+  .metric-card:nth-child(4) {
+    @apply border-t-red-600;
+  }
+
+  .metric-card:nth-child(4) .metric-icon {
+    @apply bg-red-50 text-red-700;
+  }
+
+  .metric-card:nth-child(5) {
+    @apply border-t-ocean;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  }
+
+  .metric-card > .metric-value {
+    font-size: clamp(1.35rem, 13cqi, 1.875rem);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   .metric-card::before,
@@ -150,7 +205,20 @@
   }
 
   .summary-band {
-    @apply border-y border-slate-200 bg-white px-4 py-5 sm:px-6;
+    @apply relative overflow-hidden rounded-lg border border-navy bg-navy px-5 py-6 text-white shadow-glow sm:px-7;
+  }
+
+  .summary-band::before {
+    content: "";
+    @apply absolute inset-y-0 left-0 w-1.5 bg-cream;
+  }
+
+  .summary-band .eyebrow {
+    @apply text-cream;
+  }
+
+  .summary-copy {
+    color: rgb(255 255 255 / 72%);
   }
 
   .movement-type-grid {
@@ -170,7 +238,7 @@
   }
 
   .movement-row {
-    @apply flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 md:flex-row md:items-center md:justify-between;
+    @apply flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 transition md:flex-row md:items-center md:justify-between;
   }
 
   .movement-amount {
@@ -187,6 +255,136 @@
 
   .movement-amount.credit {
     @apply bg-amber-50 text-amber-800;
+  }
+
+  .recurring-impact-band {
+    @apply grid overflow-hidden rounded-lg border border-slate-200 bg-white shadow-card md:grid-cols-2;
+  }
+
+  .recurring-impact-item {
+    @apply flex items-start gap-4 p-5;
+  }
+
+  .recurring-impact-item + .recurring-impact-item {
+    @apply border-t border-slate-200 md:border-l md:border-t-0;
+  }
+
+  .recurring-impact-icon {
+    @apply grid h-11 w-11 shrink-0 place-items-center rounded-lg;
+  }
+
+  .recurring-impact-icon.debit {
+    @apply bg-emerald-50 text-emerald-700;
+  }
+
+  .recurring-impact-icon.credit {
+    @apply bg-amber-50 text-amber-700;
+  }
+
+  .impact-chip {
+    @apply mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-black;
+  }
+
+  .impact-chip.debit {
+    @apply bg-emerald-50 text-emerald-800;
+  }
+
+  .impact-chip.credit {
+    @apply bg-amber-50 text-amber-800;
+  }
+
+  .impact-chip.inactive {
+    @apply bg-slate-100 text-slate-500;
+  }
+
+  .insight-card {
+    transition:
+      transform 180ms ease,
+      border-color 180ms ease,
+      box-shadow 180ms ease;
+  }
+}
+
+.app-shell {
+  background: #edf2f6;
+}
+
+.app-header {
+  border-top: 3px solid #0f7f83;
+  box-shadow: 0 10px 34px rgb(31 78 120 / 10%);
+}
+
+.nav-item.active,
+.nav-item[aria-selected="true"] {
+  box-shadow: inset 3px 0 0 #fff2cc;
+}
+
+.nav-item span:first-child {
+  transition: transform 180ms ease;
+}
+
+.dashboard-stack > * {
+  animation: contentRise 420ms ease both;
+}
+
+.dashboard-stack > :nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.dashboard-stack > :nth-child(3) {
+  animation-delay: 110ms;
+}
+
+.dashboard-stack > :nth-child(4) {
+  animation-delay: 160ms;
+}
+
+.dashboard-stack > :nth-child(5) {
+  animation-delay: 210ms;
+}
+
+.dashboard-stack > :nth-child(6) {
+  animation-delay: 260ms;
+}
+
+@media (hover: hover) {
+  .metric-card:hover,
+  .insight-card:hover {
+    transform: translateY(-3px);
+    border-color: rgb(46 117 182 / 42%);
+    box-shadow: 0 16px 38px rgb(31 78 120 / 15%);
+  }
+
+  .metric-card:hover .metric-icon {
+    transform: scale(1.06) rotate(-3deg);
+  }
+
+  .movement-row:hover {
+    transform: translateX(3px);
+    border-color: rgb(46 117 182 / 38%);
+    box-shadow: 0 8px 24px rgb(31 78 120 / 9%);
+  }
+
+  .button-primary:hover,
+  .button-secondary:hover,
+  .button-ghost:hover {
+    transform: translateY(-1px);
+  }
+
+  .nav-item:hover span:first-child {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes contentRise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -311,6 +509,10 @@ body.mobile-menu-open {
   .guide-card {
     border-radius: 0.5rem;
     padding: 1rem;
+  }
+
+  .metric-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .guide-hero {

@@ -604,11 +604,11 @@ function MetricCard({
     <article className="metric-card group">
       <div className="mb-5 flex items-center justify-between gap-3">
         <span className="text-sm font-black text-slate-500">{label}</span>
-        <span className="grid h-11 w-11 place-items-center rounded-lg bg-blue-50 text-navy">
+        <span className="metric-icon">
           <Icon size={21} />
         </span>
       </div>
-      <strong className="block text-3xl font-black text-navy">{value}</strong>
+      <strong className="metric-value block text-3xl font-black text-navy">{value}</strong>
       <small className="mt-2 block text-sm text-slate-500">{note}</small>
     </article>
   );
@@ -1572,7 +1572,7 @@ export function App() {
       {mobileMenu ? <div className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileMenu(false)} /> : null}
 
       <div
-        className={`grid min-h-dvh transition-[grid-template-columns] duration-200 lg:grid-cols-[18rem_minmax(0,1fr)] ${
+        className={`app-shell grid min-h-dvh transition-[grid-template-columns] duration-200 lg:grid-cols-[18rem_minmax(0,1fr)] ${
           sidebarCollapsed ? "lg:grid-cols-[6rem_minmax(0,1fr)]" : ""
         }`}
       >
@@ -1616,7 +1616,7 @@ export function App() {
               return (
                 <button
                   key={item.id}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-black transition hover:bg-white/10 ${
+                  className={`nav-item flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-black transition hover:bg-white/10 ${
                     active ? "bg-white/15 text-white" : "text-white/78"
                   } ${sidebarCollapsed ? "lg:justify-center lg:px-2" : ""}`}
                   type="button"
@@ -1628,7 +1628,7 @@ export function App() {
                   }}
                   title={item.label}
                 >
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/10">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/10">
                     <Icon size={18} />
                   </span>
                   {!sidebarCollapsed ? <span>{item.label}</span> : null}
@@ -1920,14 +1920,18 @@ function Dashboard({
   const activePeriod = periods.find((period) => !period.closedAt) || periods[0];
   const activeRecurring = state.recurring.filter((item) => item.active && item.amount > 0);
   const recurringTotal = activeRecurring.reduce((total, item) => total + item.amount, 0);
+  const recurringDebitTotal = activeRecurring
+    .filter((item) => item.method === "debit")
+    .reduce((total, item) => total + item.amount, 0);
+  const recurringCreditTotal = recurringTotal - recurringDebitTotal;
   return (
-    <div className="grid gap-5">
+    <div className="dashboard-stack grid gap-5">
       <section className="summary-band" data-tour="dashboard-hero">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
           <div>
             <p className="eyebrow">Resumen actual</p>
-            <h3 className="mt-2 text-2xl font-black text-navy">{activePeriod?.label || "Sin quincena activa"}</h3>
-            <p className="mt-1 text-sm text-slate-500">
+            <h3 className="mt-2 text-2xl font-black text-white">{activePeriod?.label || "Sin quincena activa"}</h3>
+            <p className="summary-copy mt-1 text-sm">
               {state.transactions.length} movimientos registrados | {activeRecurring.length} recurrentes activos
             </p>
           </div>
@@ -1944,12 +1948,17 @@ function Dashboard({
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5" data-tour="dashboard-metrics">
+      <section className="metric-grid grid gap-4" data-tour="dashboard-metrics">
         <MetricCard label="Ahorro actual" value={formatMoney(state.settings.currentSavings)} note="Saldo real registrado" icon={WalletCards} />
         <MetricCard label="Renta apartada" value={formatMoney(state.settings.rentReserve)} note={`Meta: ${formatMoney(state.settings.monthlyRent)}`} icon={Receipt} />
         <MetricCard label="Proximo pago TDC" value={formatMoney(cardDebt.nextPayment)} note="Pendiente calculado" icon={CalendarClock} />
         <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Total ocupado" icon={CreditCard} />
-        <MetricCard label="Recurrentes activos" value={formatMoney(recurringTotal)} note={`${activeRecurring.length} cargos`} icon={ListChecks} />
+        <MetricCard
+          label="Recurrentes activos"
+          value={formatMoney(recurringTotal)}
+          note={`Ahorro ${formatMoney(recurringDebitTotal)} | TDC ${formatMoney(recurringCreditTotal)}`}
+          icon={ListChecks}
+        />
       </section>
 
       {hasRealData ? <FinancialInsightsPanel insights={insights} onNavigate={onNavigate} /> : null}
@@ -2070,7 +2079,7 @@ function FinancialInsightsPanel({
         {insights.map((insight) => {
           const Icon = insight.icon;
           return (
-            <article key={insight.id} className={`rounded-lg border p-4 shadow-card ${toneClass[insight.tone]}`}>
+            <article key={insight.id} className={`insight-card rounded-lg border p-4 shadow-card ${toneClass[insight.tone]}`}>
               <div className="flex items-start gap-3">
                 <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg ${iconClass[insight.tone]}`}>
                   <Icon size={20} />
@@ -2401,6 +2410,13 @@ function RecurringView({
   onDelete: (item: RecurringItem) => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const activeRecurring = recurring.filter((item) => item.active && item.amount > 0);
+  const debitTotal = activeRecurring
+    .filter((item) => item.method === "debit")
+    .reduce((total, item) => total + item.amount, 0);
+  const creditTotal = activeRecurring
+    .filter((item) => item.method === "credit")
+    .reduce((total, item) => total + item.amount, 0);
 
   function handleEdit(item: RecurringItem, index: number) {
     onEdit(item, index);
@@ -2408,75 +2424,108 @@ function RecurringView({
   }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(320px,.75fr)_minmax(0,1.25fr)]">
-      <form ref={formRef} className="panel self-start scroll-mt-24" onSubmit={onSubmit} data-tour="recurring-form">
-        <p className="eyebrow">Editar</p>
-        <h3 className="mb-5 text-2xl font-black text-navy">{draft.id ? "Editar recurrente" : "Nuevo recurrente"}</h3>
-        <Field label="Servicio">
-          <input className="input" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} required placeholder="Ej. Spotify" />
-        </Field>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Monto">
-            <input className="input" value={draft.amount} onChange={(event) => setDraft({ ...draft, amount: asNumber(event.target.value) })} type="number" step="0.01" min="0" required />
-          </Field>
-          <Field label="Dia">
-            <input className="input" value={draft.day} onChange={(event) => setDraft({ ...draft, day: asNumber(event.target.value, 1) })} type="number" min="1" max="31" required />
-          </Field>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Medio">
-            <select className="input" value={draft.method} onChange={(event) => setDraft({ ...draft, method: event.target.value as RecurringItem["method"] })}>
-              <option value="debit">Debito</option>
-              <option value="credit">Tarjeta de credito</option>
-            </select>
-          </Field>
-          <Field label="Estado">
-            <select className="input" value={String(draft.active)} onChange={(event) => setDraft({ ...draft, active: event.target.value === "true" })}>
-              <option value="true">Activo</option>
-              <option value="false">Cancelado</option>
-            </select>
-          </Field>
-        </div>
-        <div className="mt-2 flex gap-2">
-          <button className="button-primary flex-1" type="submit">
-            <Check size={18} />
-            {draft.id ? "Guardar cambios" : "Guardar"}
-          </button>
-          <button className="button-ghost" type="button" onClick={onClear}>
-            Limpiar
-          </button>
-        </div>
-      </form>
-
-      <section className="panel" data-tour="recurring-list">
-        <p className="eyebrow">Servicios</p>
-        <h3 className="mb-5 text-2xl font-black text-navy">Recurrentes</h3>
-        {recurring.length ? (
-          <div className="grid gap-3">
-            {recurring.map((item, index) => (
-              <article key={item.id} className="movement-row">
-                <div className="min-w-0">
-                  <strong className="text-navy">{item.name}</strong>
-                  <p className="text-sm text-slate-500">
-                    Dia {item.day} | {item.method === "credit" ? "Tarjeta" : "Debito"} | {item.active ? "Activo" : "Cancelado"}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 md:justify-end">
-                  <span className="pill">{formatMoney(item.amount)}</span>
-                  <button className="button-ghost px-3 py-2" type="button" onClick={() => handleEdit(item, index)}>
-                    Editar
-                  </button>
-                  <button className="button-ghost px-3 py-2 text-red-700" type="button" onClick={() => onDelete(item)}>
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </article>
-            ))}
+    <div className="grid gap-5">
+      <section className="recurring-impact-band" aria-label="Impacto de recurrentes activos">
+        <div className="recurring-impact-item">
+          <span className="recurring-impact-icon debit">
+            <WalletCards size={20} />
+          </span>
+          <div>
+            <p className="text-xs font-black uppercase text-slate-500">Debito programado</p>
+            <strong className="mt-1 block text-2xl font-black text-navy">{formatMoney(debitTotal)}</strong>
+            <p className="mt-1 text-sm text-slate-600">Se descuenta del ahorro al llegar cada fecha.</p>
           </div>
-        ) : (
-          <EmptyState title="Sin recurrentes" text="Captura servicios o suscripciones para tenerlos visibles." />
-        )}
+        </div>
+        <div className="recurring-impact-item">
+          <span className="recurring-impact-icon credit">
+            <CreditCard size={20} />
+          </span>
+          <div>
+            <p className="text-xs font-black uppercase text-slate-500">TDC programada</p>
+            <strong className="mt-1 block text-2xl font-black text-navy">{formatMoney(creditTotal)}</strong>
+            <p className="mt-1 text-sm text-slate-600">Aumenta el saldo ocupado al llegar cada fecha.</p>
+          </div>
+        </div>
       </section>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(320px,.75fr)_minmax(0,1.25fr)]">
+        <form ref={formRef} className="panel self-start scroll-mt-24" onSubmit={onSubmit} data-tour="recurring-form">
+          <p className="eyebrow">Editar</p>
+          <h3 className="mb-5 text-2xl font-black text-navy">{draft.id ? "Editar recurrente" : "Nuevo recurrente"}</h3>
+          <Field label="Servicio">
+            <input className="input" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} required placeholder="Ej. Spotify" />
+          </Field>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="Monto">
+              <input className="input" value={draft.amount} onChange={(event) => setDraft({ ...draft, amount: asNumber(event.target.value) })} type="number" step="0.01" min="0" required />
+            </Field>
+            <Field label="Dia">
+              <input className="input" value={draft.day} onChange={(event) => setDraft({ ...draft, day: asNumber(event.target.value, 1) })} type="number" min="1" max="31" required />
+            </Field>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="Medio">
+              <select className="input" value={draft.method} onChange={(event) => setDraft({ ...draft, method: event.target.value as RecurringItem["method"] })}>
+                <option value="debit">Debito</option>
+                <option value="credit">Tarjeta de credito</option>
+              </select>
+            </Field>
+            <Field label="Estado">
+              <select className="input" value={String(draft.active)} onChange={(event) => setDraft({ ...draft, active: event.target.value === "true" })}>
+                <option value="true">Activo</option>
+                <option value="false">Cancelado</option>
+              </select>
+            </Field>
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button className="button-primary flex-1" type="submit">
+              <Check size={18} />
+              {draft.id ? "Guardar cambios" : "Guardar"}
+            </button>
+            <button className="button-ghost" type="button" onClick={onClear}>
+              Limpiar
+            </button>
+          </div>
+        </form>
+
+        <section className="panel" data-tour="recurring-list">
+          <p className="eyebrow">Servicios</p>
+          <h3 className="mb-5 text-2xl font-black text-navy">Recurrentes</h3>
+          {recurring.length ? (
+            <div className="grid gap-3">
+              {recurring.map((item, index) => (
+                <article key={item.id} className="movement-row">
+                  <div className="min-w-0">
+                    <strong className="text-navy">{item.name}</strong>
+                    <p className="text-sm text-slate-500">
+                      Dia {item.day} | {item.method === "credit" ? "Tarjeta" : "Debito"} | {item.active ? "Activo" : "Cancelado"}
+                    </p>
+                    <span className={`impact-chip ${item.active ? item.method : "inactive"}`}>
+                      {item.method === "credit" ? <CreditCard size={14} /> : <WalletCards size={14} />}
+                      {item.active
+                        ? item.method === "credit"
+                          ? "Aumenta TDC en su fecha"
+                          : "Descuenta ahorro en su fecha"
+                        : "Pausado: no se aplica"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 md:justify-end">
+                    <span className="pill">{formatMoney(item.amount)}</span>
+                    <button className="button-ghost px-3 py-2" type="button" onClick={() => handleEdit(item, index)}>
+                      Editar
+                    </button>
+                    <button className="button-ghost px-3 py-2 text-red-700" type="button" onClick={() => onDelete(item)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="Sin recurrentes" text="Captura servicios o suscripciones para tenerlos visibles." />
+          )}
+        </section>
+      </div>
     </div>
   );
 }
