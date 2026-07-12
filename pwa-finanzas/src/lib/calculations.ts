@@ -89,7 +89,9 @@ type RecurringEffects = {
 };
 
 type PeriodMovementTotals = {
-  income: number;
+  salaryIncome: number;
+  extraIncome: number;
+  rentReserve: number;
   cashExpenses: number;
   creditCharges: number;
 };
@@ -653,9 +655,20 @@ export function normalizeState(input?: Partial<AppState> | null, asOf = defaultT
 function movementTotalsByPeriod(inputState: AppState): Map<string, PeriodMovementTotals> {
   const totals = new Map<string, PeriodMovementTotals>();
   for (const transaction of inputState.transactions) {
-    const current = totals.get(transaction.periodId) || { income: 0, cashExpenses: 0, creditCharges: 0 };
+    const current = totals.get(transaction.periodId) || {
+      salaryIncome: 0,
+      extraIncome: 0,
+      rentReserve: 0,
+      cashExpenses: 0,
+      creditCharges: 0,
+    };
     const amount = positiveAmount(transaction.amount);
-    if (transaction.method === "income") current.income += amount;
+    if (transaction.method === "income" && transaction.category.trim().toLocaleLowerCase("es-MX") === "nomina") {
+      current.salaryIncome += amount;
+      current.rentReserve += positiveAmount(transaction.rentReserveAmount);
+    } else if (transaction.method === "income") {
+      current.extraIncome += amount;
+    }
     if (transaction.method === "cash") current.cashExpenses -= amount;
     if (transaction.method === "credit") current.creditCharges += amount;
     totals.set(transaction.periodId, current);
@@ -674,10 +687,26 @@ export function calculatePeriodsFor(inputState: AppState): CalculatedPeriod[] {
   const movementTotals = movementTotalsByPeriod(inputState);
   return inputState.periods.map((period, index) => {
     const recurring = recurringEffects.get(period.id) || emptyRecurringEffects();
-    const movements = movementTotals.get(period.id) || { income: 0, cashExpenses: 0, creditCharges: 0 };
+    const movements = movementTotals.get(period.id) || {
+      salaryIncome: 0,
+      extraIncome: 0,
+      rentReserve: 0,
+      cashExpenses: 0,
+      creditCharges: 0,
+    };
     const includeRecurringProjection = index > currentIndex && !period.closedAt;
-    const income = movements.income || (period.closedAt ? asNumber(period.appliedIncome) : 0);
-    const cashExpenses = movements.cashExpenses + (includeRecurringProjection ? recurring.debitServices : 0);
+    const projectedSalary = includeRecurringProjection ? positiveAmount(inputState.settings.salary) : 0;
+    const salary = movements.salaryIncome || projectedSalary;
+    const extraIncome = movements.extraIncome;
+    const rent =
+      movements.salaryIncome > 0
+        ? -Math.min(movements.salaryIncome, movements.rentReserve)
+        : projectedSalary > 0
+          ? -Math.min(projectedSalary, positiveAmount(inputState.settings.monthlyRent) / 2)
+          : 0;
+    const recordedOrProjectedIncome = salary + extraIncome;
+    const income = recordedOrProjectedIncome || (period.closedAt ? asNumber(period.appliedIncome) : 0);
+    const cashExpenses = movements.cashExpenses + rent + (includeRecurringProjection ? recurring.debitServices : 0);
     const cardPayment = period.cardPayment + recurring.cardPayment;
     const flow = index <= currentIndex || period.closedAt ? 0 : income + cashExpenses + cardPayment;
     const savings =
@@ -696,6 +725,10 @@ export function calculatePeriodsFor(inputState: AppState): CalculatedPeriod[] {
     const creditCharges = movements.creditCharges + (includeRecurringProjection ? recurring.creditCharges : 0);
     return {
       ...period,
+      salary,
+      extraIncome,
+      rent,
+      salaryProjected: projectedSalary > 0 && movements.salaryIncome <= 0,
       income,
       cashExpenses,
       cardPayment,

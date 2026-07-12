@@ -177,11 +177,12 @@ const guideTopics: GuideTopic[] = [
     id: "transactions",
     title: "Movimientos",
     summary: "Es la fuente de verdad para ingresos, gastos, compras y pagos de tarjeta.",
-    editable: ["Ingreso", "Debito o efectivo", "Tarjeta de credito", "Pago TDC", "Fecha", "Categoria", "MSI"],
+    editable: ["Nomina", "Ingreso extra", "Debito o efectivo", "Tarjeta de credito", "Pago TDC", "Fecha", "Categoria", "MSI"],
     steps: [
-      "Elige ingreso, debito/efectivo, tarjeta o pago TDC.",
+      "Pulsa Registrar movimiento para abrir el modal.",
+      "Elige nomina, ingreso extra, debito/efectivo, tarjeta o pago TDC.",
       "Captura la fecha real; la quincena se asigna sola.",
-      "Los ingresos suman al ahorro y los gastos reales lo restan.",
+      "Nomina e ingresos extra suman al ahorro; los gastos reales lo restan.",
       "Si fue tarjeta a meses, elige 3 o 6 MSI para repartir pagos en las segundas quincenas.",
     ],
     tip: "Si alguien te reembolsa una parte, registra ese dinero como ingreso cuando lo recibas.",
@@ -270,8 +271,8 @@ const guidedTourSteps: GuidedTourStep[] = [
     targetLabel: "Botones superiores",
     title: "Acciones siempre disponibles",
     intro: "Estos botones viven en todas las pantallas para que no tengas que volver al menu.",
-    focus: "Ayuda abre una guia contextual, Tour inicia una guia, Nuevo movimiento abre el registro, Acciones muestra atajos y Respaldo descarga tu JSON.",
-    action: "Usa Respaldo antes de cambios grandes y Nuevo movimiento para capturar algo real.",
+    focus: "Ayuda abre una guia contextual, Registrar abre el modal de movimientos y Acciones muestra el resto de atajos.",
+    action: "Usa Registrar para capturar algo real y Acciones para respaldo, tour o manual.",
     outcome: "Puedes moverte por la app sin perder el punto donde estabas.",
   },
   {
@@ -354,35 +355,13 @@ const guidedTourSteps: GuidedTourStep[] = [
   {
     moduleId: "transactions",
     view: "transactions",
-    target: "transactions-form",
-    targetLabel: "Formulario de movimiento",
-    title: "Captura un movimiento",
-    intro: "Aqui registras compras, gastos o ingresos nuevos.",
-    focus: "Tipo, nombre, monto, fecha y categoria; la quincena se asigna por fecha.",
-    action: "Captura el monto real del ingreso o gasto.",
+    target: "transactions-list",
+    targetLabel: "Registro de movimientos",
+    title: "Captura desde el modal",
+    intro: "El historial queda limpio y el formulario se abre solo cuando lo necesitas.",
+    focus: "Nomina e ingreso extra aparecen separados junto a debito, compra TDC y pago TDC.",
+    action: "Pulsa Registrar movimiento y elige el tipo real.",
     outcome: "La app ajusta la quincena y, si aplica, los pagos de tarjeta.",
-  },
-  {
-    moduleId: "transactions",
-    view: "transactions",
-    target: "transactions-method",
-    targetLabel: "Tipo de movimiento",
-    title: "Ingreso o gasto",
-    intro: "Esta seleccion cambia como se refleja el movimiento.",
-    focus: "Ingreso suma al ahorro; debito y pago TDC restan; tarjeta aumenta la deuda.",
-    action: "Elige el tipo que coincida con lo que realmente ocurrio.",
-    outcome: "El calculo cae en el periodo correcto.",
-  },
-  {
-    moduleId: "transactions",
-    view: "transactions",
-    target: "transactions-installments",
-    targetLabel: "Meses sin intereses",
-    title: "Compras a MSI",
-    intro: "Este selector reparte una compra de tarjeta en pagos futuros.",
-    focus: "Una exhibicion cae en el siguiente pago; 3 o 6 MSI se distribuyen por meses.",
-    action: "Elige el plazo real antes de guardar.",
-    outcome: "El pago de tarjeta futuro queda mas realista.",
   },
   {
     moduleId: "transactions",
@@ -692,6 +671,7 @@ function buildFinancialInsights(
 ): FinancialInsight[] {
   const insights: FinancialInsight[] = [];
   const currentSavings = Math.max(0, asNumber(state.settings.currentSavings));
+  const salary = Math.max(0, asNumber(state.settings.salary));
   const monthlyRent = Math.max(0, asNumber(state.settings.monthlyRent));
   const rentReserve = Math.max(0, asNumber(state.settings.rentReserve));
   const finalSavings = periods.at(-1)?.savings || currentSavings;
@@ -712,6 +692,19 @@ function buildFinancialInsights(
   const nextPaymentShare = currentSavings > 0 ? (cardDebt.nextPayment / currentSavings) * 100 : 0;
   const cardVsSavings = currentSavings > 0 ? (cardDebt.totalDebt / currentSavings) * 100 : 0;
   const monthlyCardPeak = monthly.reduce((peak, row) => Math.max(peak, Math.abs(row.cardPayment)), 0);
+
+  if (salary <= 0) {
+    insights.push({
+      id: "salary-missing",
+      title: "Falta nomina estimada",
+      value: formatMoney(0),
+      detail: "Las quincenas futuras solo pueden proyectar egresos mientras este monto siga en cero.",
+      action: "Configura tu nomina estimada por quincena.",
+      tone: "warning",
+      icon: CircleDollarSign,
+      view: "settings",
+    });
+  }
 
   if (cardDebt.totalDebt > currentSavings && currentSavings > 0) {
     insights.push({
@@ -863,8 +856,10 @@ export function App() {
   const [tourOpen, setTourOpen] = useState(false);
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);
+  const [transactionModalOpen, setTransactionModalOpen] = useState(false);
   const [transactionDraft, setTransactionDraft] = useState<Transaction | null>(null);
   const [newTransactionMethod, setNewTransactionMethod] = useState<Transaction["method"]>("cash");
+  const [newTransactionCategory, setNewTransactionCategory] = useState("Comida");
   const [recurringDraft, setRecurringDraft] = useState(emptyRecurring);
   const [recurringDraftIndex, setRecurringDraftIndex] = useState<number | null>(null);
   const [syncDraft, setSyncDraft] = useState(cloneSeed().sync);
@@ -1293,8 +1288,8 @@ export function App() {
     );
     setTransactionDraft(null);
     setNewTransactionMethod("cash");
-    form.reset();
-    (form.elements.namedItem("date") as HTMLInputElement).value = today;
+    setNewTransactionCategory("Comida");
+    setTransactionModalOpen(false);
   }
 
   function editTransaction(transaction: Transaction) {
@@ -1304,18 +1299,22 @@ export function App() {
     }
     setTransactionDraft({ ...transaction });
     setNewTransactionMethod(transaction.method);
-    setView("transactions");
-    window.setTimeout(() => document.querySelector<HTMLElement>('[data-tour="transactions-form"]')?.scrollIntoView({ block: "start", behavior: "smooth" }), 80);
+    setNewTransactionCategory(transaction.category);
+    setTransactionModalOpen(true);
   }
 
   function clearTransactionDraft() {
     setTransactionDraft(null);
+    setNewTransactionMethod("cash");
+    setNewTransactionCategory("Comida");
+    setTransactionModalOpen(false);
   }
 
-  function openNewTransaction(method: Transaction["method"]) {
+  function openNewTransaction() {
     setTransactionDraft(null);
-    setNewTransactionMethod(method);
-    setView("transactions");
+    setNewTransactionMethod("cash");
+    setNewTransactionCategory("Comida");
+    setTransactionModalOpen(true);
   }
 
   async function deleteTransaction(transaction: Transaction) {
@@ -1577,22 +1576,22 @@ export function App() {
         }`}
       >
         <aside
-          className={`mobile-menu-shell fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(21rem,calc(100vw-3rem))] flex-col gap-6 overflow-y-auto bg-navy p-5 text-white shadow-2xl transition-transform duration-200 lg:sticky lg:top-0 lg:w-auto lg:translate-x-0 lg:overflow-hidden ${
+          className={`app-sidebar mobile-menu-shell fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(21rem,calc(100vw-3rem))] flex-col gap-6 overflow-y-auto p-5 shadow-2xl transition-transform duration-200 lg:sticky lg:top-0 lg:w-auto lg:translate-x-0 lg:overflow-hidden ${
             mobileMenu ? "translate-x-0" : "-translate-x-[105%]"
           } ${sidebarCollapsed ? "lg:items-center lg:p-4" : ""}`}
         >
           <div className="flex items-center gap-3">
-            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-white font-black text-navy shadow-card">
+            <div className="brand-mark grid h-12 w-12 shrink-0 place-items-center rounded-lg font-black">
               PF
             </div>
             {!sidebarCollapsed ? (
-              <div className="min-w-0">
+              <div className="brand-copy min-w-0">
                 <h1 className="truncate text-base font-black">Plan Financiero</h1>
-                <p className="truncate text-xs text-white/70">Quincenas, TDC y ahorros</p>
+                <p className="truncate text-xs">Quincenas, TDC y ahorros</p>
               </div>
             ) : null}
             <button
-              className="ml-auto hidden h-10 w-10 place-items-center rounded-lg border border-white/15 bg-white/10 text-white lg:grid"
+              className="sidebar-icon-button ml-auto hidden h-10 w-10 place-items-center rounded-lg lg:grid"
               type="button"
               onClick={toggleSidebar}
               aria-label={sidebarCollapsed ? "Mostrar menu" : "Ocultar menu"}
@@ -1600,7 +1599,7 @@ export function App() {
               {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
             </button>
             <button
-              className="ml-auto grid h-10 w-10 place-items-center rounded-lg border border-white/15 bg-white/10 text-white lg:hidden"
+              className="sidebar-icon-button ml-auto grid h-10 w-10 place-items-center rounded-lg lg:hidden"
               type="button"
               onClick={() => setMobileMenu(false)}
               aria-label="Cerrar menu"
@@ -1616,8 +1615,8 @@ export function App() {
               return (
                 <button
                   key={item.id}
-                  className={`nav-item flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-black transition hover:bg-white/10 ${
-                    active ? "bg-white/15 text-white" : "text-white/78"
+                  className={`nav-item flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-black transition ${
+                    active ? "active" : ""
                   } ${sidebarCollapsed ? "lg:justify-center lg:px-2" : ""}`}
                   type="button"
                   role="tab"
@@ -1628,7 +1627,7 @@ export function App() {
                   }}
                   title={item.label}
                 >
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/10">
+                  <span className="nav-icon grid h-9 w-9 shrink-0 place-items-center rounded-lg">
                     <Icon size={18} />
                   </span>
                   {!sidebarCollapsed ? <span>{item.label}</span> : null}
@@ -1637,15 +1636,15 @@ export function App() {
             })}
           </nav>
 
-          <div className={`mt-auto rounded-lg border border-white/15 bg-white/10 p-4 ${sidebarCollapsed ? "lg:p-3" : ""}`}>
+          <div className={`sidebar-footer mt-auto rounded-lg p-4 ${sidebarCollapsed ? "lg:p-3" : ""}`}>
             {sidebarCollapsed ? (
               <ShieldCheck className="mx-auto" />
             ) : (
               <>
-                <p className="eyebrow text-white/70">PWA</p>
-                <p className="mt-2 text-sm text-white/78">Instalable, offline y con sync cifrado.</p>
+                <p className="eyebrow">PWA</p>
+                <p className="mt-2 text-sm">Instalable, offline y con sync cifrado.</p>
                 <button
-                  className="button-ghost mt-4 w-full border-white/20 bg-white/10 text-white"
+                  className="button-ghost mt-4 w-full"
                   type="button"
                   onClick={() => {
                     setView("guide");
@@ -1655,12 +1654,12 @@ export function App() {
                   <BookOpen size={16} />
                   Manual de uso
                 </button>
-                <button className="button-ghost mt-2 w-full border-white/20 bg-white/10 text-white" type="button" onClick={() => startGuidedTour()}>
+                <button className="button-ghost mt-2 w-full" type="button" onClick={() => startGuidedTour()}>
                   <PlayCircle size={16} />
                   Tour guiado
                 </button>
                 {installPrompt ? (
-                  <button className="button-ghost mt-4 w-full border-white/20 bg-white/10 text-white" type="button" onClick={handleInstall}>
+                  <button className="button-ghost mt-4 w-full" type="button" onClick={handleInstall}>
                     Instalar app
                   </button>
                 ) : null}
@@ -1669,32 +1668,29 @@ export function App() {
           </div>
         </aside>
 
-        <main className="min-w-0 p-3 sm:p-4 lg:p-6">
-          <header className="app-header md:sticky md:top-0 z-30 mb-4 flex flex-col gap-4 overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-card sm:p-4 md:mb-5 md:flex-row md:items-center md:justify-between">
+        <main className="min-w-0 p-3 sm:p-5 lg:p-8">
+          <header className="app-header md:sticky md:top-0 z-30 mb-5 flex flex-col gap-4 py-2 md:flex-row md:items-center md:justify-between">
             <div className="relative">
-              <p className="eyebrow">Actualizable por ti</p>
-              <h2 className="text-2xl font-black text-navy sm:text-3xl md:text-4xl">{activeNav.label}</h2>
+              <p className="eyebrow">Plan financiero</p>
+              <h2 className="text-3xl font-black text-navy sm:text-4xl">{activeNav.label}</h2>
               <p className="mt-1 max-w-2xl text-sm text-slate-500">{activeGuide.summary}</p>
             </div>
-            <div className="app-header-actions relative grid grid-cols-2 gap-2 md:flex md:flex-wrap md:justify-end" data-tour="header-actions">
+            <div className="app-header-actions relative flex flex-wrap items-center gap-2" data-tour="header-actions">
               <button className="button-ghost lg:hidden" type="button" onClick={() => setMobileMenu(true)}>
                 <Menu size={18} />
                 Menu
               </button>
               <button
-                className="button-ghost"
+                className="icon-button"
                 type="button"
                 onClick={() => {
                   setGuideTopicId(view);
                   setGuideOpen(true);
                 }}
+                aria-label="Ayuda"
+                title="Ayuda"
               >
                 <CircleHelp size={18} />
-                Ayuda
-              </button>
-              <button className="button-secondary" type="button" onClick={() => startGuidedTour(view)}>
-                <PlayCircle size={18} />
-                Tour
               </button>
               {pwaStatus === "available" ? (
                 <button className="button-secondary" type="button" onClick={applyAppUpdate}>
@@ -1702,17 +1698,12 @@ export function App() {
                   Actualizar
                 </button>
               ) : null}
-              <button className="button-primary" type="button" onClick={() => openNewTransaction("cash")}>
+              <button className="button-primary" type="button" onClick={openNewTransaction}>
                 <Plus size={18} />
-                Nuevo movimiento
+                Registrar
               </button>
-              <button className="button-ghost" type="button" onClick={() => setQuickActionsOpen(true)}>
+              <button className="icon-button" type="button" onClick={() => setQuickActionsOpen(true)} aria-label="Acciones" title="Acciones">
                 <Sparkles size={18} />
-                Acciones
-              </button>
-              <button className="button-secondary" type="button" onClick={() => exportStateJson(state, today)}>
-                <Download size={18} />
-                Respaldo
               </button>
             </div>
           </header>
@@ -1721,7 +1712,6 @@ export function App() {
             {view === "dashboard" ? (
               <Dashboard
                 periods={periods}
-                monthly={monthly}
                 state={state}
                 cardDebt={cardDebt}
                 hasRealData={hasRealData}
@@ -1730,10 +1720,9 @@ export function App() {
                 insights={financialInsights}
                 chartData={chartData}
                 onImport={importJson}
-                 onEditPeriods={() => setView("periods")}
-                 onNavigate={setView}
-                 onAddIncome={() => openNewTransaction("income")}
-                 onAddExpense={() => openNewTransaction("cash")}
+                onEditPeriods={() => setView("periods")}
+                onNavigate={setView}
+                onAddMovement={openNewTransaction}
                 fileInputRef={fileInputRef}
               />
             ) : null}
@@ -1748,12 +1737,9 @@ export function App() {
             {view === "transactions" ? (
               <TransactionsView
                 state={state}
-                draft={transactionDraft}
-                defaultMethod={newTransactionMethod}
-                onSubmit={submitTransaction}
                 onEdit={editTransaction}
                 onDelete={deleteTransaction}
-                onClearDraft={clearTransactionDraft}
+                onNew={openNewTransaction}
               />
             ) : null}
             {view === "recurring" ? (
@@ -1808,6 +1794,18 @@ export function App() {
         </main>
       </div>
 
+      <Modal open={transactionModalOpen} onClose={clearTransactionDraft}>
+        <TransactionForm
+          key={`${transactionDraft?.id || "new"}-${newTransactionMethod}-${newTransactionCategory}`}
+          state={state}
+          draft={transactionDraft}
+          defaultMethod={newTransactionMethod}
+          defaultCategory={newTransactionCategory}
+          onSubmit={submitTransaction}
+          onCancel={clearTransactionDraft}
+        />
+      </Modal>
+
       <QuickActionsModal
         open={quickActionsOpen}
         onClose={() => setQuickActionsOpen(false)}
@@ -1816,6 +1814,10 @@ export function App() {
           setView(next);
         }}
         onStartTour={() => startGuidedTour()}
+        onNewTransaction={() => {
+          setQuickActionsOpen(false);
+          openNewTransaction();
+        }}
         onExport={() => {
           setQuickActionsOpen(false);
           exportStateJson(state, today);
@@ -1886,7 +1888,6 @@ export function App() {
 
 function Dashboard({
   periods,
-  monthly,
   state,
   cardDebt,
   hasRealData,
@@ -1897,12 +1898,10 @@ function Dashboard({
   onImport,
   onEditPeriods,
   onNavigate,
-  onAddIncome,
-  onAddExpense,
+  onAddMovement,
   fileInputRef,
 }: {
   periods: CalculatedPeriod[];
-  monthly: MonthlyReport[];
   state: AppState;
   cardDebt: CardDebtSummary;
   hasRealData: boolean;
@@ -1913,8 +1912,7 @@ function Dashboard({
   onImport: (file?: File | null) => void;
   onEditPeriods: () => void;
   onNavigate: (view: ViewId) => void;
-  onAddIncome: () => void;
-  onAddExpense: () => void;
+  onAddMovement: () => void;
   fileInputRef: RefObject<HTMLInputElement>;
 }) {
   const activePeriod = periods.find((period) => !period.closedAt) || periods[0];
@@ -1926,39 +1924,51 @@ function Dashboard({
   const recurringCreditTotal = recurringTotal - recurringDebitTotal;
   return (
     <div className="dashboard-stack grid gap-5">
-      <section className="summary-band" data-tour="dashboard-hero">
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <section className="dashboard-hero" data-tour="dashboard-hero">
+        <div className="dashboard-hero-main">
           <div>
-            <p className="eyebrow">Resumen actual</p>
-            <h3 className="mt-2 text-2xl font-black text-white">{activePeriod?.label || "Sin quincena activa"}</h3>
-            <p className="summary-copy mt-1 text-sm">
-              {state.transactions.length} movimientos registrados | {activeRecurring.length} recurrentes activos
-            </p>
+            <p className="dashboard-hero-period">{activePeriod?.label || "Sin quincena activa"}</p>
+            <p className="dashboard-hero-label">Ahorro disponible</p>
+            <strong className="dashboard-hero-balance">{formatMoney(state.settings.currentSavings)}</strong>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button className="button-primary" type="button" onClick={onAddIncome}>
-              <CircleDollarSign size={18} />
-              Ingreso
-            </button>
-            <button className="button-secondary" type="button" onClick={onAddExpense}>
-              <Receipt size={18} />
-              Gasto
-            </button>
+          <div className="dashboard-hero-meta">
+            <span>
+              <CircleDollarSign size={17} />
+              Nomina estimada <strong>{formatMoney(state.settings.salary)}</strong>
+            </span>
+            <span>
+              <Receipt size={17} />
+              Renta apartada <strong>{formatMoney(state.settings.rentReserve)}</strong>
+            </span>
           </div>
+        </div>
+        <div className="dashboard-hero-side">
+          <div>
+            <p>Saldo utilizado TDC</p>
+            <strong>{formatMoney(cardDebt.totalDebt)}</strong>
+          </div>
+          <div className="dashboard-hero-payment">
+            <span>Proximo pago</span>
+            <strong>{formatMoney(cardDebt.nextPayment)}</strong>
+          </div>
+          <button className="dashboard-register-button" type="button" onClick={onAddMovement}>
+            <Plus size={19} />
+            Registrar movimiento
+          </button>
         </div>
       </section>
 
       <section className="metric-grid grid gap-4" data-tour="dashboard-metrics">
-        <MetricCard label="Ahorro actual" value={formatMoney(state.settings.currentSavings)} note="Saldo real registrado" icon={WalletCards} />
-        <MetricCard label="Renta apartada" value={formatMoney(state.settings.rentReserve)} note={`Meta: ${formatMoney(state.settings.monthlyRent)}`} icon={Receipt} />
+        <MetricCard label="Renta apartada" value={formatMoney(state.settings.rentReserve)} note={`Meta mensual ${formatMoney(state.settings.monthlyRent)}`} icon={Receipt} />
+        <MetricCard label="Nomina estimada" value={formatMoney(state.settings.salary)} note="Proyeccion por quincena" icon={CircleDollarSign} />
         <MetricCard label="Proximo pago TDC" value={formatMoney(cardDebt.nextPayment)} note="Pendiente calculado" icon={CalendarClock} />
-        <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Total ocupado" icon={CreditCard} />
         <MetricCard
           label="Recurrentes activos"
           value={formatMoney(recurringTotal)}
           note={`Ahorro ${formatMoney(recurringDebitTotal)} | TDC ${formatMoney(recurringCreditTotal)}`}
           icon={ListChecks}
         />
+        <MetricCard label="Cierre proyectado" value={formatMoney(periods.at(-1)?.savings || 0)} note={periods.at(-1)?.label || "Sin proyeccion"} icon={ChartSpline} />
       </section>
 
       {hasRealData ? <FinancialInsightsPanel insights={insights} onNavigate={onNavigate} /> : null}
@@ -1991,18 +2001,12 @@ function Dashboard({
           <div className="h-64 sm:h-72">
             <ResponsiveContainer>
               <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="ahorro" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="5%" stopColor="#2e75b6" stopOpacity={0.45} />
-                    <stop offset="95%" stopColor="#2e75b6" stopOpacity={0.03} />
-                  </linearGradient>
-                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} />
                 <YAxis tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} tickLine={false} axisLine={false} />
                 <Tooltip formatter={(value) => formatMoney(value)} />
-                <Area type="monotone" dataKey="ahorro" stroke="#2e75b6" fill="url(#ahorro)" strokeWidth={3} />
-                <Area type="monotone" dataKey="flujo" stroke="#0f7f83" fill="#0f7f8320" strokeWidth={2} />
+                <Area type="monotone" dataKey="ahorro" stroke="#2e75b6" fill="#dcecf8" strokeWidth={3} />
+                <Area type="monotone" dataKey="flujo" stroke="#0f7f83" fill="#d8eeee" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -2127,7 +2131,7 @@ function PeriodsTable({
             <th className="table-head text-left">Quincena</th>
             <th className="table-head text-left">Rango</th>
             <th className="table-head">Ingresos</th>
-            <th className="table-head">Gastos debito</th>
+            <th className="table-head">Gastos / renta</th>
             {!compact ? <th className="table-head">Cargos TDC</th> : null}
             <th className="table-head">Pago TDC</th>
             <th className="table-head">Flujo</th>
@@ -2140,7 +2144,16 @@ function PeriodsTable({
             <tr key={period.id} className="transition hover:bg-blue-50/70">
               <td className="table-cell text-left font-black text-navy">{period.label}</td>
               <td className="table-cell max-w-xs whitespace-normal text-left text-slate-500">{period.note}</td>
-              <td className={`table-cell ${toneClass(period.income)}`}>{formatMoney(period.income)}</td>
+              <td className={`table-cell ${toneClass(period.income)}`}>
+                <strong className="block">{formatMoney(period.income)}</strong>
+                {period.salary || period.extraIncome ? (
+                  <span className="income-breakdown">
+                    {period.salaryProjected ? "Nomina estimada" : "Nomina real"}: {formatMoney(period.salary)}
+                    {period.extraIncome ? ` | Extras: ${formatMoney(period.extraIncome)}` : ""}
+                    {period.rent ? ` | Renta: ${formatMoney(period.rent)}` : ""}
+                  </span>
+                ) : null}
+              </td>
               <td className={`table-cell ${toneClass(period.cashExpenses)}`}>{formatMoney(period.cashExpenses)}</td>
               {!compact ? <td className="table-cell text-amber-700">{formatMoney(period.creditCharges)}</td> : null}
               <td className={`table-cell ${toneClass(period.cardPayment)}`}>{formatMoney(period.cardPayment)}</td>
@@ -2226,97 +2239,184 @@ function PeriodsView({
 
 function TransactionsView({
   state,
-  draft,
-  defaultMethod,
-  onSubmit,
   onEdit,
   onDelete,
-  onClearDraft,
+  onNew,
+}: {
+  state: AppState;
+  onEdit: (transaction: Transaction) => void;
+  onDelete: (transaction: Transaction) => void;
+  onNew: () => void;
+}) {
+  const transactions = [...state.transactions].sort((left, right) => right.date.localeCompare(left.date));
+  return (
+    <section className="panel" data-tour="transactions-list">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="eyebrow">Registro real</p>
+          <h3 className="text-2xl font-black text-navy">Movimientos recientes</h3>
+        </div>
+        <button className="button-primary" type="button" onClick={onNew}>
+          <Plus size={18} />
+          Registrar movimiento
+        </button>
+      </div>
+      {transactions.length ? (
+        <div className="grid gap-3">
+          {transactions.map((transaction) => {
+            const periodClosed = isClosedPeriod(state, transaction.periodId);
+            const automatic = Boolean(transaction.sourceRecurringId);
+            const locked = periodClosed || automatic;
+            const schedule = transaction.paymentSchedule?.length
+              ? transaction.paymentSchedule
+                  .map((payment) => `${getPeriodLabel(state.periods, payment.periodId)}: ${formatMoney(payment.amount)}`)
+                  .join(" | ")
+              : "";
+            return (
+              <article key={transaction.id} className="movement-row">
+                <div className="min-w-0">
+                  <strong className="text-navy">{transaction.description}</strong>
+                  <p className="text-sm text-slate-500">
+                    {transaction.date} | {transaction.category} | {getPeriodLabel(state.periods, transaction.periodId)}
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    {transaction.method === "income" && transaction.category === "Nomina"
+                      ? "Nomina recibida"
+                      : transaction.method === "income"
+                        ? "Ingreso extra"
+                        : transactionMethodLabel(transaction.method)}
+                    {automatic ? " | Automatico" : ""}
+                    {transaction.rentReserveAmount ? ` | Renta: ${formatMoney(transaction.rentReserveAmount)}` : ""}
+                  </p>
+                  {schedule ? <p className="text-xs text-slate-500">Pago TDC: {schedule}</p> : null}
+                </div>
+                <div className="flex items-center justify-between gap-2 md:justify-end">
+                  <span className={`movement-amount ${transaction.method === "income" ? "income" : transaction.method === "credit" ? "credit" : "expense"}`}>
+                    {transaction.method === "income" ? "+" : transaction.method === "credit" ? "" : "-"}{formatMoney(transaction.amount)}
+                  </span>
+                  {automatic ? <span className="pill">Recurrente</span> : null}
+                  {periodClosed ? <span className="pill">Historico</span> : null}
+                  <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(transaction)} disabled={locked}>
+                    Editar
+                  </button>
+                  <button className="button-ghost px-3 py-2 text-red-700" type="button" onClick={() => onDelete(transaction)} disabled={locked} aria-label={`Borrar ${transaction.description}`}>
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState title="Sin movimientos todavia" text="Los ingresos y gastos reales apareceran aqui." />
+      )}
+    </section>
+  );
+}
+
+function TransactionForm({
+  state,
+  draft,
+  defaultMethod,
+  defaultCategory,
+  onSubmit,
+  onCancel,
 }: {
   state: AppState;
   draft: Transaction | null;
   defaultMethod: Transaction["method"];
+  defaultCategory: string;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onEdit: (transaction: Transaction) => void;
-  onDelete: (transaction: Transaction) => void;
-  onClearDraft: () => void;
+  onCancel: () => void;
 }) {
   const [method, setMethod] = useState<Transaction["method"]>(draft?.method || defaultMethod);
-  const [category, setCategory] = useState(draft?.category || (defaultMethod === "income" ? "Nomina" : "Comida"));
-  const transactions = [...state.transactions].sort((left, right) => right.date.localeCompare(left.date));
-  const incomeCategories = ["Nomina", "Ingreso extra", "Reembolso", "Venta", "Otro ingreso"];
+  const [category, setCategory] = useState(draft?.category || defaultCategory);
+  const extraIncomeCategories = ["Ingreso extra", "Reembolso", "Venta", "Otro ingreso"];
   const expenseCategories = ["Comida", "Transporte", "Salud", "Servicio", "Hogar", "Mascotas", "Entretenimiento", "Otro"];
+  const isPayroll = method === "income" && category === "Nomina";
+  const isExtraIncome = method === "income" && !isPayroll;
 
-  useEffect(() => {
-    const nextMethod = draft?.method || defaultMethod;
+  function chooseKind(nextMethod: Transaction["method"], nextCategory: string) {
     setMethod(nextMethod);
-    setCategory(draft?.category || (nextMethod === "income" ? "Nomina" : nextMethod === "card_payment" ? "Pago TDC" : "Comida"));
-  }, [defaultMethod, draft]);
-
-  function chooseMethod(nextMethod: Transaction["method"]) {
-    setMethod(nextMethod);
-    setCategory(nextMethod === "income" ? "Nomina" : nextMethod === "card_payment" ? "Pago TDC" : "Comida");
+    setCategory(nextCategory);
   }
+
+  const placeholder = isPayroll
+    ? "Ej. Nomina 1a julio"
+    : isExtraIncome
+      ? "Ej. Reembolso, venta o bono"
+      : method === "card_payment"
+        ? "Ej. Pago tarjeta julio"
+        : "Ej. Farmacia, mandado o gasolina";
+
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(320px,.75fr)_minmax(0,1.25fr)]">
-      <form key={draft?.id || "new-transaction"} className="panel self-start" onSubmit={onSubmit} data-tour="transactions-form">
-        <p className="eyebrow">Registro real</p>
-        <h3 className="mb-5 text-2xl font-black text-navy">{draft ? "Editar movimiento" : "Nuevo movimiento"}</h3>
-        <input type="hidden" name="method" value={method} />
-        <div className="movement-type-grid mb-5" data-tour="transactions-method">
-          <button className={method === "income" ? "movement-type active" : "movement-type"} type="button" onClick={() => chooseMethod("income")}>
-            <CircleDollarSign size={18} />
-            Ingreso
-          </button>
-          <button className={method === "cash" ? "movement-type active" : "movement-type"} type="button" onClick={() => chooseMethod("cash")}>
-            <Receipt size={18} />
-            Debito / efectivo
-          </button>
-          <button className={method === "credit" ? "movement-type active" : "movement-type"} type="button" onClick={() => chooseMethod("credit")}>
-            <CreditCard size={18} />
-            Tarjeta
-          </button>
-          <button className={method === "card_payment" ? "movement-type active" : "movement-type"} type="button" onClick={() => chooseMethod("card_payment")}>
-            <Check size={18} />
-            Pago TDC
-          </button>
-        </div>
-        <Field label="Nombre">
-          <input
-            className="input"
-            name="description"
-            required
-            placeholder={method === "income" ? "Ej. Nomina, reembolso, venta" : method === "card_payment" ? "Ej. Pago tarjeta julio" : "Ej. Farmacia, mandado, gasolina"}
-            defaultValue={draft?.description || ""}
-          />
+    <form className="transaction-form p-6 sm:p-8" onSubmit={onSubmit} data-tour="transactions-form">
+      <p className="eyebrow">Registro real</p>
+      <h3 className="mt-2 text-2xl font-black text-navy sm:text-3xl">{draft ? "Editar movimiento" : "Registrar movimiento"}</h3>
+      <input type="hidden" name="method" value={method} />
+
+      <div className="movement-type-grid my-6" data-tour="transactions-method">
+        <button className={isPayroll ? "movement-type active payroll" : "movement-type"} type="button" onClick={() => chooseKind("income", "Nomina")}>
+          <CircleDollarSign size={18} />
+          Nomina
+        </button>
+        <button className={isExtraIncome ? "movement-type active income" : "movement-type"} type="button" onClick={() => chooseKind("income", "Ingreso extra")}>
+          <Plus size={18} />
+          Ingreso extra
+        </button>
+        <button className={method === "cash" ? "movement-type active cash" : "movement-type"} type="button" onClick={() => chooseKind("cash", "Comida")}>
+          <Receipt size={18} />
+          Debito / efectivo
+        </button>
+        <button className={method === "credit" ? "movement-type active credit" : "movement-type"} type="button" onClick={() => chooseKind("credit", "Comida")}>
+          <CreditCard size={18} />
+          Compra TDC
+        </button>
+        <button className={method === "card_payment" ? "movement-type active payment" : "movement-type"} type="button" onClick={() => chooseKind("card_payment", "Pago TDC")}>
+          <Check size={18} />
+          Pago TDC
+        </button>
+      </div>
+
+      <Field label="Nombre">
+        <input className="input" name="description" required placeholder={placeholder} defaultValue={draft?.description || ""} />
+      </Field>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Monto">
+          <input className="input" name="amount" type="number" step="0.01" min="0" required defaultValue={draft?.amount ?? ""} />
         </Field>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Monto">
-            <input className="input" name="amount" type="number" step="0.01" min="0" required defaultValue={draft?.amount ?? ""} />
-          </Field>
-          <Field label="Fecha">
-            <input className="input" name="date" type="date" max={today} required defaultValue={draft?.date || today} />
-          </Field>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label={method === "income" ? "Tipo de ingreso" : "Categoria"}>
-            <select className="input" name="category" value={category} onChange={(event) => setCategory(event.target.value)} disabled={method === "card_payment"}>
-              {(method === "income" ? incomeCategories : method === "card_payment" ? ["Pago TDC"] : expenseCategories).map((option) => (
-                <option key={option}>{option}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Quincena">
-            <input className="input" value="Se asigna por la fecha" disabled />
-          </Field>
-        </div>
-        {method === "income" && category === "Nomina" && state.settings.monthlyRent > 0 ? (
-          <div className="status-row mb-4">
-            <Receipt size={17} />
-            <span>Renta apartada: {formatMoney(payrollRentReserve(state, asNumber(draft?.rentReserveAmount)))}</span>
+        <Field label="Fecha">
+          <input className="input" name="date" type="date" max={today} required defaultValue={draft?.date || today} />
+        </Field>
+      </div>
+
+      {isPayroll || method === "card_payment" ? (
+        <input type="hidden" name="category" value={isPayroll ? "Nomina" : "Pago TDC"} />
+      ) : (
+        <Field label={isExtraIncome ? "Tipo de ingreso" : "Categoria"}>
+          <select className="input" name="category" value={category} onChange={(event) => setCategory(event.target.value)}>
+            {(isExtraIncome ? extraIncomeCategories : expenseCategories).map((option) => (
+              <option key={option}>{option}</option>
+            ))}
+          </select>
+        </Field>
+      )}
+
+      {isPayroll ? (
+        <div className="payroll-status mb-4">
+          <div>
+            <span>Nomina estimada</span>
+            <strong>{formatMoney(state.settings.salary)}</strong>
           </div>
-        ) : null}
-        {method === "credit" ? <div data-tour="transactions-installments">
+          <div>
+            <span>Renta que se aparta</span>
+            <strong>{formatMoney(payrollRentReserve(state, asNumber(draft?.rentReserveAmount)))}</strong>
+          </div>
+        </div>
+      ) : null}
+
+      {method === "credit" ? (
+        <div data-tour="transactions-installments">
           <Field label="Meses sin intereses">
             <select className="input" name="installments" defaultValue={String(draft?.installments || 1)}>
               <option value="1">Una exhibicion</option>
@@ -2324,71 +2424,20 @@ function TransactionsView({
               <option value="6">6 MSI</option>
             </select>
           </Field>
-        </div> : null}
-        <div className="mt-2 grid gap-2 sm:grid-cols-2">
-          <button className="button-primary w-full" type="submit">
-            {draft ? <Check size={18} /> : <Plus size={18} />}
-            {draft ? "Actualizar movimiento" : "Guardar movimiento"}
-          </button>
-          {draft ? (
-            <button className="button-secondary w-full" type="button" onClick={onClearDraft}>
-              <X size={18} />
-              Cancelar edicion
-            </button>
-          ) : null}
         </div>
-      </form>
+      ) : null}
 
-      <section className="panel" data-tour="transactions-list">
-        <p className="eyebrow">Registro</p>
-        <h3 className="mb-5 text-2xl font-black text-navy">Movimientos recientes</h3>
-        {transactions.length ? (
-          <div className="grid gap-3">
-            {transactions.map((transaction) => {
-              const periodClosed = isClosedPeriod(state, transaction.periodId);
-              const automatic = Boolean(transaction.sourceRecurringId);
-              const locked = periodClosed || automatic;
-              const schedule = transaction.paymentSchedule?.length
-                ? transaction.paymentSchedule
-                    .map((payment) => `${getPeriodLabel(state.periods, payment.periodId)}: ${formatMoney(payment.amount)}`)
-                    .join(" | ")
-                : "";
-              return (
-                <article key={transaction.id} className="movement-row">
-                  <div className="min-w-0">
-                    <strong className="text-navy">{transaction.description}</strong>
-                    <p className="text-sm text-slate-500">
-                      {transaction.date} | {transaction.category} | {getPeriodLabel(state.periods, transaction.periodId)}
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      {transactionMethodLabel(transaction.method)}
-                      {automatic ? " | Automatico" : ""}
-                      {transaction.rentReserveAmount ? ` | Renta: ${formatMoney(transaction.rentReserveAmount)}` : ""}
-                    </p>
-                    {schedule ? <p className="text-xs text-slate-500">Pago TDC: {schedule}</p> : null}
-                  </div>
-                  <div className="flex items-center justify-between gap-2 md:justify-end">
-                    <span className={`movement-amount ${transaction.method === "income" ? "income" : transaction.method === "credit" ? "credit" : "expense"}`}>
-                      {transaction.method === "income" ? "+" : transaction.method === "credit" ? "" : "-"}{formatMoney(transaction.amount)}
-                    </span>
-                    {automatic ? <span className="pill">Recurrente</span> : null}
-                    {periodClosed ? <span className="pill">Histórico</span> : null}
-                    <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(transaction)} disabled={locked}>
-                      Editar
-                    </button>
-                    <button className="button-ghost px-3 py-2 text-red-700" type="button" onClick={() => onDelete(transaction)} disabled={locked} aria-label={`Borrar ${transaction.description}`}>
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        ) : (
-          <EmptyState title="Sin movimientos todavia" text="Los ingresos y gastos reales apareceran aqui." />
-        )}
-      </section>
-    </div>
+      <div className="mt-6 grid gap-2 sm:grid-cols-2">
+        <button className="button-primary w-full" type="submit">
+          {draft ? <Check size={18} /> : <Plus size={18} />}
+          {draft ? "Actualizar movimiento" : "Guardar movimiento"}
+        </button>
+        <button className="button-ghost w-full" type="button" onClick={onCancel}>
+          <X size={18} />
+          Cancelar
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -2792,6 +2841,7 @@ function SettingsView({
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <Field label="Ahorro actual"><input className="input" name="currentSavings" type="number" step="0.01" defaultValue={settings.currentSavings} /></Field>
+          <Field label="Nomina estimada por quincena"><input className="input" name="salary" type="number" step="0.01" min="0" defaultValue={settings.salary} /></Field>
           <Field label="Renta apartada fuera del ahorro"><input className="input" name="rentReserve" type="number" step="0.01" defaultValue={settings.rentReserve} /></Field>
           <Field label="Renta mensual"><input className="input" name="monthlyRent" type="number" step="0.01" defaultValue={settings.monthlyRent} /></Field>
           <Field label="Dia de corte TDC"><input className="input" name="cutoffDay" type="number" min="1" max="31" defaultValue={settings.cutoffDay} /></Field>
@@ -2985,7 +3035,7 @@ function ManualView({
           <p className="eyebrow">Atajo mental</p>
           <h3 className="mb-5 text-2xl font-black text-navy">Que pantalla uso?</h3>
           <div className="grid gap-3 md:grid-cols-2">
-            <MiniGuide title="Recibi dinero" text="Ve a Movimientos y elige Ingreso; Nomina aparta renta automaticamente." />
+            <MiniGuide title="Recibi dinero" text="Abre Registrar y elige Nomina o Ingreso extra; la nomina aparta renta automaticamente." />
             <MiniGuide title="Hice una compra nueva" text="Ve a Movimientos y elige tarjeta, debito o MSI." />
             <MiniGuide title="Quiero respaldar" text="Ve a Reportes para JSON/CSV o a Ajustes para sync cifrado." />
             <MiniGuide title="No entiendo un numero" text="Abre Ayuda en esa pantalla y revisa que modifica cada campo." />
@@ -3252,12 +3302,14 @@ function QuickActionsModal({
   onClose,
   onView,
   onStartTour,
+  onNewTransaction,
   onExport,
 }: {
   open: boolean;
   onClose: () => void;
   onView: (view: ViewId) => void;
   onStartTour: () => void;
+  onNewTransaction: () => void;
   onExport: () => void;
 }) {
   return (
@@ -3267,7 +3319,7 @@ function QuickActionsModal({
         <h3 className="mt-2 text-2xl font-black text-navy">Que quieres hacer ahora?</h3>
         <p className="mt-2 text-sm text-slate-500">Atajos para moverte sin buscar entre secciones.</p>
         <div className="mt-6 grid gap-3 md:grid-cols-2">
-          <ActionTile title="Nuevo movimiento" text="Agregar gasto, ingreso o compra MSI." onClick={() => onView("transactions")} />
+          <ActionTile title="Nuevo movimiento" text="Agregar nomina, ingreso, gasto o compra TDC." onClick={onNewTransaction} />
           <ActionTile title="Revisar quincenas" text="Ver ingresos, gastos y pagos agrupados por fecha." onClick={() => onView("periods")} />
           <ActionTile title="Sync y ajustes" text="Configurar respaldo cifrado y supuestos." onClick={() => onView("settings")} />
           <ActionTile title="Tour guiado" text="La app te lleva paso a paso por cada pantalla." onClick={onStartTour} />

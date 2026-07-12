@@ -16,6 +16,7 @@ import { cloneSeed } from "../pwa-finanzas/src/lib/seed.ts";
 const state = cloneSeed();
 state.settings.currentSavings = 1000;
 state.settings.rentReserve = 0;
+state.settings.salary = 5587;
 state.settings.monthlyRent = 3500;
 state.settings.usedCreditBalance = 1000;
 state.periods = [
@@ -45,6 +46,14 @@ state.periods = [
 assert.equal(periodIdForDate(state, "2026-07-11"), "2026-07-h1");
 assert.equal(periodIdForDate(state, "2026-07-25"), "2026-07-h2");
 
+const projectedPeriods = calculatePeriodsFor(state);
+assert.equal(projectedPeriods[0].income, 0);
+assert.equal(projectedPeriods[1].salary, 5587);
+assert.equal(projectedPeriods[1].income, 5587);
+assert.equal(projectedPeriods[1].salaryProjected, true);
+assert.equal(projectedPeriods[1].rent, -1750);
+assert.equal(projectedPeriods[1].flow, 3837);
+
 const payroll = {
   id: "payroll",
   date: "2026-07-11",
@@ -62,6 +71,33 @@ const withPayroll = applyTransactionToState({ ...state, transactions: [payroll] 
 assert.equal(withPayroll.settings.currentSavings, 7250);
 assert.equal(withPayroll.settings.rentReserve, 1750);
 assert.equal(calculatePeriodsFor(withPayroll)[0].income, 8000);
+
+const futurePayroll = {
+  ...payroll,
+  id: "future-payroll",
+  date: "2026-07-25",
+  periodId: "2026-07-h2",
+};
+const withFuturePayroll = calculatePeriodsFor({ ...state, transactions: [futurePayroll] });
+assert.equal(withFuturePayroll[1].salary, 8000);
+assert.equal(withFuturePayroll[1].income, 8000);
+assert.equal(withFuturePayroll[1].salaryProjected, false);
+assert.equal(withFuturePayroll[1].rent, -1750);
+assert.equal(withFuturePayroll[1].flow, 6250);
+
+const futureExtraIncome = {
+  ...futurePayroll,
+  id: "future-extra",
+  description: "Venta",
+  amount: 400,
+  category: "Ingreso extra",
+};
+const withFutureExtra = calculatePeriodsFor({ ...state, transactions: [futureExtraIncome] });
+assert.equal(withFutureExtra[1].salary, 5587);
+assert.equal(withFutureExtra[1].extraIncome, 400);
+assert.equal(withFutureExtra[1].income, 5987);
+assert.equal(withFutureExtra[1].rent, -1750);
+assert.equal(withFutureExtra[1].flow, 4237);
 
 const withoutPayroll = applyTransactionToState({ ...withPayroll, transactions: [] }, payroll, -1);
 assert.equal(withoutPayroll.settings.currentSavings, 1000);
@@ -165,7 +201,7 @@ const movedToTomorrow = reconcileRecurringTransactions(
 assert.equal(movedToTomorrow.removed.length, 1);
 assert.equal(movedToTomorrow.added.length, 0);
 assert.equal(movedToTomorrow.state.settings.currentSavings, 7250);
-assert.equal(calculatePeriodsFor(movedToTomorrow.state)[0].cashExpenses, 0);
+assert.equal(calculatePeriodsFor(movedToTomorrow.state)[0].cashExpenses, -1750);
 
 const chargedTomorrow = materializeDueRecurringTransactions(movedToTomorrow.state, "2026-07-03");
 assert.equal(chargedTomorrow.added.length, 1);

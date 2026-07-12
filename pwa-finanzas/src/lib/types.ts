@@ -108,6 +108,7 @@ export type CalculatedPeriod = Period & {
   flow: number;
   creditCharges: number;
   savings: number;
+  salaryProjected?: boolean;
 };
 
 export type MonthlyReport = {
