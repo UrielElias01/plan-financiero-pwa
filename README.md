@@ -1,6 +1,6 @@
 # Plan Financiero PWA
 
-Aplicacion web progresiva para llevar un plan financiero quincenal con ahorros, renta apartada, compras con tarjeta de credito, pagos de debito/efectivo, MSI, reportes mensuales y sincronizacion cifrada opcional.
+Aplicación web progresiva para planear por quincenas y llevar ingresos, gastos, suscripciones, pagos de tarjeta y compras a meses. Interfaz oscura adaptable con panel de saldos, tablas de estimaciones y desglose de cuotas.
 
 La app publica no debe contener datos personales. Los importes reales viven en respaldos JSON privados, IndexedDB local del navegador o en el backend cifrado si decides usar sync.
 
@@ -19,22 +19,19 @@ La app publica no debe contener datos personales. Los importes reales viven en r
 
 ## Funcionalidad principal
 
-- Ingresos y gastos reales registrados como movimientos.
-- Ahorro actual y renta apartada por separado.
-- Nomina manual con apartado automatico de media renta.
-- Cierre de quincena que solo protege el historial y agrega el siguiente periodo.
-- Movimientos de ingreso, tarjeta de credito, efectivo, debito y pago TDC.
-- Pagos con tarjeta a una exhibicion, 3 MSI o 6 MSI.
-- Saldo utilizado de tarjeta, adicional al pago al corte.
-- Pagos de efectivo/debito y pagos TDC descontados del ahorro al registrarse.
-- Reembolsos registrados como ingresos, sin calculos de pareja.
-- Recurrentes materializados solo al llegar su fecha y reconciliados al editarlos.
-- Reportes mensuales con graficas y exportacion CSV/JSON.
-- Manual interno, ayuda contextual y tours guiados por modulo.
-- Consejos financieros accionables calculados desde el estado actual.
-- Actualizacion PWA desde la app, sin desinstalar ni perder IndexedDB.
-- PWA offline-first con IndexedDB.
-- Sync cifrado opcional con Cloudflare Worker.
+- Plan vacío desde la fecha actual, con doce meses iniciales de proyección.
+- Ingresos y gastos reales con alta, edición y eliminación que recalculan saldos.
+- Sueldo estimado por quincena sustituido por la nómina registrada, sin duplicarlo.
+- Dinero disponible y apartado de renta separados.
+- MSI de hasta 120 cuotas, mensualidad bancaria, cuotas iniciales pagadas y próximo mes de pago.
+- Calendario por mes y año con pagos realizados, pendientes y detalle por compra.
+- Pagos parciales, asignación a una quincena y saldo a favor de tarjeta.
+- Reparto explícito por compra; la parte personal no reduce la deuda completa ante el banco.
+- Suscripciones proyectadas y confirmadas por el usuario, con historial protegido al editarlas.
+- Tablas y reportes que separan movimientos reales de estimaciones.
+- Importación JSON validada y migración de respaldos antiguos con avisos de revisión.
+- Exportación JSON/CSV, manual interno, ayuda contextual y tours.
+- Persistencia local en IndexedDB, PWA sin conexión y sync cifrado opcional.
 
 ## Modelo financiero
 
@@ -42,12 +39,12 @@ La explicacion completa esta en [docs/FINANCIAL_MODEL.md](docs/FINANCIAL_MODEL.m
 
 Resumen corto:
 
-- `settings.currentSavings` es el ahorro real disponible.
-- Cada ingreso real aumenta el ahorro; Nomina tambien aparta media renta.
-- Un movimiento de efectivo/debito o pago TDC baja `currentSavings` directamente.
-- Una compra de tarjeta no baja el ahorro al capturarla; genera pagos futuros de TDC.
-- Al cerrar una quincena no cambian saldos; al pagar renta, se restablece el apartado desde Ajustes.
-- El saldo utilizado de TDC se captura como el numero real que muestra el banco; si esta en cero, la app usa los campos legacy como respaldo.
+- Los saldos se recalculan desde las bases de conciliación y los movimientos; el calendario no es otra fuente de deuda.
+- Cada cuota pendiente existe en un solo mes. Los pagos reales cancelan obligaciones una sola vez.
+- El sueldo y las suscripciones previstos no se convierten en dinero real al abrir la app.
+- La deuda inicial incluye solamente importes ausentes de las compras registradas.
+- Cerrar una quincena no modifica dinero ni marca pagos como realizados.
+- Las estimaciones usan centavos enteros y dependen de lo capturado; los cambios externos deben registrarse.
 
 ## Desarrollo local
 
@@ -70,7 +67,9 @@ http://127.0.0.1:4173/plan-financiero-pwa/
 ```powershell
 cd pwa-finanzas
 npm run build
+npm run check:engine
 npm run check:rollover
+npm run check:backups
 npm run check:sync
 ```
 
@@ -101,6 +100,8 @@ Este repo incluye un grafo local generado con Graphify:
 - [.graphify/GRAPH_REPORT.md](.graphify/GRAPH_REPORT.md)
 
 Cuando el MCP de Graphify este cargado en Codex, puede consultar ese grafo para responder preguntas de arquitectura sin leer todo el repo cada vez.
+
+La revisión de este cambio no pudo regenerar el grafo: el CLI `graphify` no está instalado en el entorno. El paquete npm de igual nombre no proporciona el CLI requerido por `AGENTS.md`. El grafo existente puede estar desactualizado; verifica el código antes de usar sus relaciones.
 
 Despues de tocar codigo corre:
 

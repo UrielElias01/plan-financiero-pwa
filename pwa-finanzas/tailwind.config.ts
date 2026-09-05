@@ -5,16 +5,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#102033",
-        navy: "#1f4e78",
-        ocean: "#2e75b6",
-        teal: "#0f7f83",
-        mint: "#d9ead3",
-        cream: "#fff2cc",
+        ink: "#e7edf7",
+        navy: "#162b43",
+        ocean: "#62dbea",
+        teal: "#b9f17c",
+        mint: "#b9f17c",
+        cream: "#f5cb79",
+        midnight: "#080d17",
+        surface: "#111b2c",
       },
       boxShadow: {
-        glow: "0 24px 80px rgb(31 78 120 / 18%)",
-        card: "0 18px 55px rgb(31 78 120 / 12%)",
+        glow: "0 16px 56px rgb(0 0 0 / 30%), 0 0 32px rgb(98 219 234 / 6%)",
+        card: "0 10px 32px rgb(0 0 0 / 16%)",
       },
       animation: {
         "fade-up": "fadeUp 220ms ease both",

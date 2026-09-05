@@ -1,3 +1,4 @@
+import { CardView } from "./CardView";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, ReactNode, RefObject } from "react";
 import {
@@ -49,6 +50,7 @@ import {
   applyTransactionToState,
   asNumber,
   buildPaymentScheduleFor,
+  reconcileCashBalanceFor,
   calculateCardDebtFor,
   calculateMonthlyFor,
   calculatePeriodsFor,
@@ -59,6 +61,7 @@ import {
   paydayForPeriod,
   periodIdForDate,
   reconcileRecurringTransactions,
+  recurringOccurrencesFor,
   reopenPeriodFor,
   signedTone,
 } from "./lib/calculations";
@@ -183,7 +186,7 @@ const guideTopics: GuideTopic[] = [
       "Elige nomina, ingreso extra, debito/efectivo, tarjeta o pago TDC.",
       "Captura la fecha real; la quincena se asigna sola.",
       "Nomina e ingresos extra suman al ahorro; los gastos reales lo restan.",
-      "Si fue tarjeta a meses, elige 3 o 6 MSI para repartir pagos en las segundas quincenas.",
+      "Para MSI indica mensualidad, plazo, cuotas pagadas antes de registrarla y próximo mes de pago. El día límite asigna la quincena.",
     ],
     tip: "Si alguien te reembolsa una parte, registra ese dinero como ingreso cuando lo recibas.",
     icon: WalletCards,
@@ -197,6 +200,7 @@ const guideTopics: GuideTopic[] = [
     steps: [
       "Agrega cada servicio con su costo mensual.",
       "Marca si se paga con debito o tarjeta.",
+      "Cuando el cargo se realice, usa Confirmar cargo. Hasta entonces solo afecta la proyección.",
       "Si ya no lo pagas, cambialo a cancelado o borralo.",
     ],
     tip: "Sirve como checklist para no olvidar cargos pequenos que se comen el margen.",
@@ -207,7 +211,7 @@ const guideTopics: GuideTopic[] = [
     id: "card",
     title: "Tarjeta",
     summary: "Muestra pago al corte, saldo utilizado total, calendario de deuda, tu parte y saldos no recurrentes por mes.",
-    editable: ["Se alimenta desde tus compras y quincenas", "Los MSI se reflejan en pagos futuros", "El saldo utilizado se captura desde lo que muestra el banco", "El calendario base viene del respaldo importado"],
+    editable: ["Compras a meses nuevas o en curso", "Mensualidad, plazo y cuotas iniciales pagadas", "Pagos completos o abonos parciales", "Tu parte explícita por compra"],
     steps: [
       "Revisa la tarjeta Saldo utilizado TDC para saber cuanto aparece ocupado en la tarjeta.",
       "Revisa el mes con barras mas altas.",
@@ -402,8 +406,8 @@ const guidedTourSteps: GuidedTourStep[] = [
     target: "card-chart",
     targetLabel: "Grafica de TDC",
     title: "Calendario de tarjeta",
-    intro: "Esta grafica compara el total mensual contra tu parte.",
-    focus: "Azul es total; verde es tu parte; los picos indican meses mas pesados.",
+    intro: "Esta gráfica compara el cargo programado y el pendiente después de los pagos.",
+    focus: "Cian es programado; lima es pendiente. La tabla muestra tu parte informativa.",
     action: "Identifica el mes mas alto y revisa sus compras o MSI.",
     outcome: "Anticipas el pago antes de que llegue el corte.",
   },
@@ -469,7 +473,7 @@ const guidedTourSteps: GuidedTourStep[] = [
     targetLabel: "Ajustes principales",
     title: "Supuestos base",
     intro: "Aqui viven las constantes del plan.",
-    focus: "Ahorro actual, renta apartada, renta mensual, saldo TDC y fechas de tarjeta.",
+    focus: "Saldo actual, sueldo estimado, renta y deuda inicial que no hayas registrado en compras.",
     action: "Usalo para conciliar los saldos que muestran tu banco y tu tarjeta.",
     outcome: "Los movimientos siguientes parten de saldos reales.",
   },
@@ -602,9 +606,29 @@ function Modal({
   children: ReactNode;
   onClose: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    const selector = 'button:not(:disabled), input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]';
+    (dialog?.querySelector<HTMLElement>('input:not([type="hidden"]), button') || dialog)?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); closeRef.current(); }
+      if (event.key !== "Tab" || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(selector)).filter((element) => element.getClientRects().length > 0);
+      const first = focusable[0]; const last = focusable.at(-1);
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    dialog?.addEventListener("keydown", handleKey);
+    return () => { dialog?.removeEventListener("keydown", handleKey); if (previous?.isConnected) previous.focus(); };
+  }, [open]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog">
+    <div ref={dialogRef} tabIndex={-1} className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Registro y confirmación">
       <div className="animate-fade-up w-full max-w-3xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-card">
         <button
           className="absolute right-5 top-5 z-10 grid h-10 w-10 place-items-center rounded-full bg-white/80 text-navy shadow"
@@ -847,6 +871,9 @@ function buildFinancialInsights(
 export function App() {
   const [state, setState] = useState<AppState>(cloneSeed());
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const savingRef = useRef(false);
   const [view, setView] = useState<ViewId>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -883,29 +910,11 @@ export function App() {
 
   useEffect(() => {
     loadState()
-      .then(async (loaded) => {
-        const recurringResult = reconcileRecurringTransactions(loaded, today);
-        if (
-          recurringResult.added.length ||
-          recurringResult.state.recurringLastAppliedDate !== loaded.recurringLastAppliedDate
-        ) {
-          await saveState(recurringResult.state);
-        }
-        setState(recurringResult.state);
-        setSyncDraft(recurringResult.state.sync);
-        if (recurringResult.added.length) {
-          const names = recurringResult.added.map((transaction) => transaction.description).join(", ");
-          window.setTimeout(
-            () =>
-              showToast(
-                recurringResult.added.length === 1
-                  ? `Pago recurrente agregado: ${names}`
-                  : `Pagos recurrentes agregados: ${names}`,
-              ),
-            0,
-          );
-        }
+      .then((loaded) => {
+        setState(loaded);
+        setSyncDraft(loaded.sync);
       })
+      .catch((error: Error) => setLoadError(error.message || "No se pudo leer el registro local."))
       .finally(() => setReady(true));
   }, []);
 
@@ -1054,11 +1063,20 @@ export function App() {
   }
 
   async function commit(nextState: AppState, message: string) {
-    const normalized = normalizeState({ ...nextState, updatedAt: new Date().toISOString() });
-    await saveState(normalized);
-    setState(normalized);
-    setSyncDraft(normalized.sync);
-    showToast(message);
+    if (savingRef.current || loadError) return false;
+    savingRef.current = true;
+    try {
+      const normalized = normalizeState({ ...nextState, updatedAt: new Date().toISOString() });
+      await saveState(normalized);
+      setState(normalized);
+      setSyncDraft(normalized.sync);
+      setSaveError("");
+      showToast(message);
+      return true;
+    } catch (error) {
+      setSaveError(`No se guardaron los cambios: ${(error as Error).message}`);
+      return false;
+    } finally { savingRef.current = false; }
   }
 
   function confirmAction(config: Omit<ConfirmConfig, "resolve">): Promise<boolean> {
@@ -1191,7 +1209,7 @@ export function App() {
       confirmText: "Renta pagada",
     });
     if (!confirmed) return;
-    await commit({ ...state, settings: { ...state.settings, rentReserve: 0 } }, "Renta apartada restablecida");
+    await commit(reconcileCashBalanceFor(state, state.settings.currentSavings, 0), "Renta apartada restablecida");
   }
 
   async function submitTransaction(event: FormEvent<HTMLFormElement>) {
@@ -1216,13 +1234,26 @@ export function App() {
     const transactionBase: Transaction = {
       id: transactionDraft?.id || crypto.randomUUID(),
       date,
-      description: getField(form, "description"),
+      description: getField(form, "description").trim(),
       amount: asNumber(getField(form, "amount")),
       category,
       method,
       periodId,
-      shared: transactionDraft?.shared || false,
-      installments: method === "credit" ? asNumber(getField(form, "installments"), 1) : 1,
+      shared: getField(form, "shared") === "on",
+      userAmount: getField(form, "shared") === "on" ? asNumber(getField(form, "userAmount")) : undefined,
+      installments: method === "credit" ? asNumber(getField(form, "totalInstallments"), 1) : 1,
+      totalInstallments: method === "credit" ? asNumber(getField(form, "totalInstallments"), 1) : 1,
+      monthlyAmount: method === "credit" && getField(form, "monthlyAmount") ? asNumber(getField(form, "monthlyAmount")) : undefined,
+      currentInstallment: method === "credit" ? asNumber(getField(form, "currentInstallment")) : 0,
+      installmentPaymentIds: method === "credit" && asNumber(getField(form, "currentInstallment")) > 0
+        ? transactionDraft?.currentInstallment === asNumber(getField(form, "currentInstallment")) ? transactionDraft.installmentPaymentIds
+          : state.transactions.filter((entry) => entry.method === "card_payment" && entry.date <= today).map((entry) => entry.id)
+        : undefined,
+      nextPaymentMonth: method === "credit" ? getField(form, "nextPaymentMonth") || undefined : undefined,
+      installmentsAsOf: method === "credit" && asNumber(getField(form, "currentInstallment")) > 0
+        ? transactionDraft?.currentInstallment === asNumber(getField(form, "currentInstallment")) ? transactionDraft.installmentsAsOf || transactionDraft.date : today
+        : undefined,
+      paymentForPeriodId: method === "card_payment" ? getField(form, "paymentForPeriodId") || undefined : undefined,
       sourceRecurringId: transactionDraft?.sourceRecurringId,
       recurringDate: transactionDraft?.recurringDate,
       skipPlanImpact: false,
@@ -1235,6 +1266,23 @@ export function App() {
     if (transactionBase.amount <= 0) {
       showToast("El monto debe ser mayor a cero", "danger");
       return;
+    }
+    if (!transactionBase.description || (transactionBase.shared && (transactionBase.userAmount! < 0 || transactionBase.userAmount! > transactionBase.amount))) {
+      showToast("Revisa el nombre y tu parte: debe estar entre cero y el monto total.", "danger");
+      return;
+    }
+    if (method === "credit") {
+      const total = transactionBase.totalInstallments!;
+      const paid = transactionBase.currentInstallment!;
+      if (!Number.isInteger(total) || total < 1 || total > 120 || !Number.isInteger(paid) || paid < 0 || paid > total) {
+        showToast("Revisa el plazo (1 a 120 meses) y las cuotas ya pagadas.", "danger"); return;
+      }
+      if (total > 1 && (!transactionBase.monthlyAmount || !transactionBase.nextPaymentMonth)) {
+        showToast("Indica la mensualidad del banco y el mes de la próxima cuota.", "danger"); return;
+      }
+      if (transactionBase.monthlyAmount && Math.abs(Math.round(transactionBase.monthlyAmount * 100) * total - Math.round(transactionBase.amount * 100)) > total) {
+        showToast("La mensualidad por el plazo debe coincidir con el total de la compra (tolerancia de un centavo por cuota).", "danger"); return;
+      }
     }
     if (date > today) {
       showToast("Registra el movimiento cuando realmente ocurra", "danger");
@@ -1258,8 +1306,8 @@ export function App() {
         Math.abs(entry.amount - transactionBase.amount) < 0.01,
     );
     if (duplicate) {
-      showToast("Ese movimiento ya esta registrado", "danger");
-      return;
+      const confirmed = await confirmAction({ title: "Movimiento parecido", message: "Ya existe un movimiento con la misma fecha, nombre e importe. Continúa solo si corresponde a una operación real diferente.", confirmText: "Es otra operación" });
+      if (!confirmed) return;
     }
     const baseState = transactionDraft
       ? applyTransactionToState(
@@ -1275,7 +1323,7 @@ export function App() {
       ...transactionBase,
       paymentSchedule: buildPaymentScheduleFor(baseState, transactionBase),
     };
-    await commit(
+    const saved = await commit(
       applyTransactionToState(
         {
           ...baseState,
@@ -1286,6 +1334,7 @@ export function App() {
       ),
       transactionDraft ? "Movimiento actualizado" : "Movimiento agregado",
     );
+    if (!saved) return;
     setTransactionDraft(null);
     setNewTransactionMethod("cash");
     setNewTransactionCategory("Comida");
@@ -1348,16 +1397,13 @@ export function App() {
       showToast("Reabre la quincena antes de registrar pagos TDC", "danger");
       return;
     }
-    const amount = Math.max(0, asNumber(-period.cardPayment));
+    const amount = Math.max(0, asNumber(period.pendingCardPayment));
     if (amount <= 0) {
       showToast("Esta quincena no tiene pago TDC pendiente", "danger");
       return;
     }
 
-    const paidAmount = state.transactions
-      .filter((transaction) => transaction.method === "card_payment" && transaction.periodId === period.id)
-      .reduce((total, transaction) => total + asNumber(transaction.amount), 0);
-    const pendingAmount = Math.max(0, amount - paidAmount);
+    const pendingAmount = amount;
     if (pendingAmount <= 0) {
       showToast("Ese pago TDC ya estaba registrado");
       return;
@@ -1377,7 +1423,8 @@ export function App() {
       amount: pendingAmount,
       category: "Pago TDC",
       method: "card_payment",
-      periodId: period.id,
+      periodId: periodIdForDate(state, today),
+      paymentForPeriodId: period.id,
       shared: false,
       installments: 1,
       paymentSchedule: [],
@@ -1409,7 +1456,12 @@ export function App() {
       day: asNumber(recurringDraft.day, 1),
       method: recurringDraft.method,
       active: recurringDraft.active,
+      startsOn: recurringDraft.startsOn || today,
+      endsOn: recurringDraft.endsOn || undefined,
     };
+    if (!item.name.trim() || item.amount <= 0 || !Number.isInteger(item.day) || item.day < 1 || item.day > 31 || (item.endsOn && item.endsOn < item.startsOn!)) {
+      showToast("Revisa el nombre, importe, día y fechas de la suscripción.", "danger"); return;
+    }
     const recurring =
       editIndex >= 0
         ? state.recurring.map((entry, index) => (index === editIndex ? item : entry))
@@ -1417,6 +1469,18 @@ export function App() {
     const reconciled = reconcileRecurringTransactions({ ...state, recurring }, today, [item.id]);
     await commit(reconciled.state, "Recurrente guardado");
     clearRecurringDraft();
+  }
+
+  async function confirmRecurring(transaction: Transaction) {
+    if (isClosedPeriod(state, transaction.periodId)) {
+      showToast("Reabre la quincena de esa fecha para confirmar el cargo.", "danger"); return;
+    }
+    if (state.transactions.some((entry) => entry.sourceRecurringId === transaction.sourceRecurringId && entry.recurringDate?.slice(0, 7) === transaction.recurringDate?.slice(0, 7))) return;
+    const matching = state.transactions.filter((entry) => !entry.sourceRecurringId && entry.date === transaction.date && entry.method === transaction.method && entry.amount === transaction.amount && entry.description.trim().toLowerCase() === transaction.description.trim().toLowerCase());
+    if (matching.length === 1) {
+      await commit({ ...state, transactions: state.transactions.map((entry) => entry.id === matching[0].id ? { ...entry, sourceRecurringId: transaction.sourceRecurringId, recurringDate: transaction.recurringDate } : entry) }, "La suscripción se vinculó al cargo que ya registraste"); return;
+    }
+    await commit(applyTransactionToState({ ...state, transactions: [...state.transactions, transaction] }, transaction), "Cargo confirmado una sola vez");
   }
 
   function editRecurring(item: RecurringItem, index: number) {
@@ -1449,31 +1513,40 @@ export function App() {
   async function submitSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const settings: Record<string, number> = { ...state.settings };
-    for (const key of Object.keys(settings)) {
-      const raw = getField(form, key);
-      if (raw !== "") settings[key] = asNumber(raw, settings[key]);
-    }
-    await commit({ ...state, settings: settings as AppState["settings"] }, "Ajustes guardados");
+    const next = reconcileCashBalanceFor(state, asNumber(getField(form, "currentSavings")), asNumber(getField(form, "rentReserve")));
+    await commit({ ...next, settings: { ...next.settings,
+      salary: asNumber(getField(form, "salary")), monthlyRent: asNumber(getField(form, "monthlyRent")),
+      cutoffDay: asNumber(getField(form, "cutoffDay")), dueDay: asNumber(getField(form, "dueDay")),
+      openingCardDebt: asNumber(getField(form, "openingCardDebt")),
+      openingCardPaymentMonth: getField(form, "openingCardPaymentMonth") || today.slice(0, 7),
+    } }, "Ajustes guardados");
   }
 
   async function resetTemplate() {
     const confirmed = await confirmAction({
-      title: "Restaurar plantilla",
-      message: "Esto reemplaza los datos actuales por una plantilla vacia. Haz respaldo antes si quieres conservarlos.",
-      confirmText: "Restaurar",
+      title: "Empezar un nuevo plan",
+      message: "Se descargará un respaldo del plan actual y empezarás desde cero, con las quincenas de hoy en adelante. Conserva ese archivo para recuperar tu registro anterior.",
+      confirmText: "Respaldar y empezar",
       danger: true,
     });
     if (!confirmed) return;
-    await commit(cloneSeed(), "Plantilla restaurada");
+    exportStateJson(state, today);
+    await commit(cloneSeed(), "Nuevo plan listo");
   }
 
   async function importJson(file?: File | null) {
     if (!file) return;
-    const imported = await readJsonFile(file);
-    const next = normalizeState(imported as Partial<AppState>);
-    await commit(reconcileRecurringTransactions(next, today).state, "Respaldo importado");
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    try {
+      const imported = await readJsonFile(file);
+      const next = normalizeState(imported as Partial<AppState>);
+      if (state.transactions.length || state.recurring.length || state.settings.currentSavings) {
+        const confirmed = await confirmAction({ title: "Importar respaldo", message: "El archivo reemplazará el plan de este dispositivo. Primero se descargará una copia de tu plan actual.", confirmText: "Respaldar e importar" });
+        if (!confirmed) return;
+        exportStateJson(state, today);
+      }
+      await commit(next, "Respaldo importado");
+    } catch (error) { setSaveError(`No se importó el archivo: ${(error as Error).message}`); }
+    finally { if (fileInputRef.current) fileInputRef.current.value = ""; }
   }
 
   function validateSyncInputs() {
@@ -1538,7 +1611,7 @@ export function App() {
     state.transactions.length > 0 ||
     state.recurring.length > 0;
 
-  const lowSavings = periods.find((period) => period.savings < 10000);
+  const lowSavings = periods.find((period) => period.savings < 0);
   const negativeFlows = periods.filter((period) => period.flow < 0);
   const financialInsights = useMemo(
     () => buildFinancialInsights(state, periods, monthly, cardDebt),
@@ -1552,6 +1625,7 @@ export function App() {
     tarjeta: Math.abs(row.cardPayment),
   }));
 
+  if (loadError) return <main className="grid min-h-screen place-items-center p-6"><section className="panel max-w-xl"><h1 className="text-2xl text-navy">No se pudo abrir tu registro</h1><p className="my-4">{loadError}</p><p className="mb-4 text-sm text-slate-500">Tus datos guardados se conservan. Reintenta antes de registrar cambios.</p><button className="button-primary" onClick={() => window.location.reload()}>Reintentar</button></section></main>;
   if (!ready) {
     return (
       <div className="grid min-h-dvh place-items-center p-6">
@@ -1576,6 +1650,7 @@ export function App() {
         }`}
       >
         <aside
+          data-open={mobileMenu}
           className={`app-sidebar mobile-menu-shell fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(21rem,calc(100vw-3rem))] flex-col gap-6 overflow-y-auto p-5 shadow-2xl transition-transform duration-200 lg:sticky lg:top-0 lg:w-auto lg:translate-x-0 lg:overflow-hidden ${
             mobileMenu ? "translate-x-0" : "-translate-x-[105%]"
           } ${sidebarCollapsed ? "lg:items-center lg:p-4" : ""}`}
@@ -1708,6 +1783,8 @@ export function App() {
             </div>
           </header>
 
+          {saveError ? <div className="panel mb-5 border-red-200" role="alert"><p>{saveError}</p><button className="button-ghost mt-3" onClick={() => setSaveError("")}>Cerrar aviso</button></div> : null}
+          {state.migrationWarnings?.length ? <div className="panel mb-5" role="status"><strong>Revisa los datos importados</strong>{state.migrationWarnings.map((warning) => <p className="mt-2 text-sm" key={warning}>{warning}</p>)}</div> : null}
           <section className="animate-fade-up">
             {view === "dashboard" ? (
               <Dashboard
@@ -1744,6 +1821,8 @@ export function App() {
             ) : null}
             {view === "recurring" ? (
               <RecurringView
+                state={state}
+                onConfirm={confirmRecurring}
                 recurring={state.recurring}
                 draft={recurringDraft}
                 setDraft={setRecurringDraft}
@@ -1753,7 +1832,7 @@ export function App() {
                 onDelete={deleteRecurring}
               />
             ) : null}
-            {view === "card" ? <CardView state={state} periods={periods} cardDebt={cardDebt} onRegisterPayment={registerCardPayment} /> : null}
+            {view === "card" ? <CardView state={state} periods={periods} cardDebt={cardDebt} onRegisterPayment={registerCardPayment} onEdit={editTransaction} onNewInstallment={() => { setTransactionDraft(null); setNewTransactionMethod("credit"); setNewTransactionCategory("Otro"); setTransactionModalOpen(true); }} /> : null}
             {view === "reports" ? (
               <ReportsView monthly={monthly} chartData={chartData} onExportJson={() => exportStateJson(state, today)} onExportCsv={() => exportMonthlyCsv(monthly, today)} onImport={importJson} />
             ) : null}
@@ -1915,7 +1994,7 @@ function Dashboard({
   onAddMovement: () => void;
   fileInputRef: RefObject<HTMLInputElement>;
 }) {
-  const activePeriod = periods.find((period) => !period.closedAt) || periods[0];
+  const activePeriod = periods.find((period) => period.id === periodIdForDate(state, today)) || periods.find((period) => !period.closedAt) || periods[0];
   const activeRecurring = state.recurring.filter((item) => item.active && item.amount > 0);
   const recurringTotal = activeRecurring.reduce((total, item) => total + item.amount, 0);
   const recurringDebitTotal = activeRecurring
@@ -1928,7 +2007,7 @@ function Dashboard({
         <div className="dashboard-hero-main">
           <div>
             <p className="dashboard-hero-period">{activePeriod?.label || "Sin quincena activa"}</p>
-            <p className="dashboard-hero-label">Ahorro disponible</p>
+            <p className="dashboard-hero-label">Tu saldo, al día</p>
             <strong className="dashboard-hero-balance">{formatMoney(state.settings.currentSavings)}</strong>
           </div>
           <div className="dashboard-hero-meta">
@@ -1976,15 +2055,16 @@ function Dashboard({
       {!hasRealData ? (
         <section className="panel flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="eyebrow">Primer arranque</p>
-            <h3 className="text-xl font-black text-navy">La app publica no trae tus montos personales</h3>
+            <p className="eyebrow">Tu punto de partida</p>
+            <h3 className="text-xl font-black text-navy">Construye tu nuevo plan</h3>
             <p className="mt-2 text-sm text-slate-500">
-              Importa el respaldo privado generado desde el Excel para cargar tu plan real en este dispositivo.
+              Empieza con tu saldo actual y sueldo estimado. Después agrega suscripciones, compras a meses y movimientos reales.
             </p>
           </div>
-          <label className="button-primary">
+          <button className="button-primary" onClick={() => onNavigate("settings")}><Settings size={18} />Configurar mi plan</button>
+          <label className="button-ghost">
             <Upload size={18} />
-            Importar respaldo privado
+            Importar respaldo
             <input ref={fileInputRef} hidden type="file" accept="application/json" onChange={(event) => onImport(event.target.files?.[0])} />
           </label>
         </section>
@@ -2001,12 +2081,12 @@ function Dashboard({
           <div className="h-64 sm:h-72">
             <ResponsiveContainer>
               <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#23344b" />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} />
                 <YAxis tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} tickLine={false} axisLine={false} />
                 <Tooltip formatter={(value) => formatMoney(value)} />
-                <Area type="monotone" dataKey="ahorro" stroke="#2e75b6" fill="#dcecf8" strokeWidth={3} />
-                <Area type="monotone" dataKey="flujo" stroke="#0f7f83" fill="#d8eeee" strokeWidth={2} />
+                <Area type="monotone" dataKey="ahorro" stroke="#62dbea" fill="#62dbea" fillOpacity={0.13} strokeWidth={3} />
+                <Area type="monotone" dataKey="flujo" stroke="#b9f17c" fill="#b9f17c" fillOpacity={0.07} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -2135,7 +2215,7 @@ function PeriodsTable({
             {!compact ? <th className="table-head">Cargos TDC</th> : null}
             <th className="table-head">Pago TDC</th>
             <th className="table-head">Flujo</th>
-            <th className="table-head">Ahorro</th>
+            <th className="table-head">Saldo al cierre</th>
             {hasActions ? <th className="table-head" /> : null}
           </tr>
         </thead>
@@ -2156,9 +2236,9 @@ function PeriodsTable({
               </td>
               <td className={`table-cell ${toneClass(period.cashExpenses)}`}>{formatMoney(period.cashExpenses)}</td>
               {!compact ? <td className="table-cell text-amber-700">{formatMoney(period.creditCharges)}</td> : null}
-              <td className={`table-cell ${toneClass(period.cardPayment)}`}>{formatMoney(period.cardPayment)}</td>
+              <td className={`table-cell ${toneClass(period.cardPayment)}`}><strong>{formatMoney(period.cardPayment)}</strong><span className="income-breakdown">Real: {formatMoney(period.actualCardPayment)} · Pendiente: {formatMoney(period.pendingCardPayment)}</span></td>
               <td className={`table-cell ${toneClass(period.flow)}`}>{formatMoney(period.flow)}</td>
-              <td className="table-cell font-black text-navy">{formatMoney(period.savings)}</td>
+              <td className="table-cell font-black text-navy">{formatMoney(period.savings)}<span className="income-breakdown">{period.closedAt ? "Cierre archivado" : "Proyectado"}</span></td>
               {hasActions ? (
                 <td className="table-cell">
                   <div className="flex justify-end gap-2">
@@ -2225,6 +2305,7 @@ function PeriodsView({
             <h3 className="text-2xl font-black text-navy">Resumen por quincena</h3>
           </div>
         </div>
+        <p className="mb-3 text-sm text-slate-500">Desliza la tabla para ver todos los importes. Los saldos futuros son estimaciones, no dinero confirmado.</p>
         <PeriodsTable
           periods={periods}
           duePeriodIds={duePeriodIds}
@@ -2248,7 +2329,9 @@ function TransactionsView({
   onDelete: (transaction: Transaction) => void;
   onNew: () => void;
 }) {
-  const transactions = [...state.transactions].sort((left, right) => right.date.localeCompare(left.date));
+  const [search, setSearch] = useState("");
+  const [filterMethod, setFilterMethod] = useState("all");
+  const transactions = [...state.transactions].filter((tx) => (filterMethod === "all" || tx.method === filterMethod) && (tx.description + " " + tx.category + " " + tx.date).toLocaleLowerCase("es-MX").includes(search.toLocaleLowerCase("es-MX"))).sort((left, right) => right.date.localeCompare(left.date));
   return (
     <section className="panel" data-tour="transactions-list">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -2261,12 +2344,13 @@ function TransactionsView({
           Registrar movimiento
         </button>
       </div>
+      <div className="mb-5 grid gap-3 md:grid-cols-2"><Field label="Buscar movimientos"><input className="input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre, categoría o fecha" type="search" /></Field><Field label="Tipo de movimiento"><select className="input" value={filterMethod} onChange={(event) => setFilterMethod(event.target.value)}><option value="all">Todos los movimientos</option><option value="income">Ingresos</option><option value="cash">Débito y efectivo</option><option value="credit">Compras TDC</option><option value="card_payment">Pagos TDC</option></select></Field></div>
       {transactions.length ? (
         <div className="grid gap-3">
           {transactions.map((transaction) => {
             const periodClosed = isClosedPeriod(state, transaction.periodId);
             const automatic = Boolean(transaction.sourceRecurringId);
-            const locked = periodClosed || automatic;
+            const locked = periodClosed;
             const schedule = transaction.paymentSchedule?.length
               ? transaction.paymentSchedule
                   .map((payment) => `${getPeriodLabel(state.periods, payment.periodId)}: ${formatMoney(payment.amount)}`)
@@ -2285,7 +2369,7 @@ function TransactionsView({
                       : transaction.method === "income"
                         ? "Ingreso extra"
                         : transactionMethodLabel(transaction.method)}
-                    {automatic ? " | Automatico" : ""}
+                    {automatic ? " | Suscripción confirmada" : ""}
                     {transaction.rentReserveAmount ? ` | Renta: ${formatMoney(transaction.rentReserveAmount)}` : ""}
                   </p>
                   {schedule ? <p className="text-xs text-slate-500">Pago TDC: {schedule}</p> : null}
@@ -2331,6 +2415,8 @@ function TransactionForm({
 }) {
   const [method, setMethod] = useState<Transaction["method"]>(draft?.method || defaultMethod);
   const [category, setCategory] = useState(draft?.category || defaultCategory);
+  const [shared, setShared] = useState(draft?.shared || false);
+  const [term, setTerm] = useState(draft?.totalInstallments || draft?.installments || 1);
   const extraIncomeCategories = ["Ingreso extra", "Reembolso", "Venta", "Otro ingreso"];
   const expenseCategories = ["Comida", "Transporte", "Salud", "Servicio", "Hogar", "Mascotas", "Entretenimiento", "Otro"];
   const isPayroll = method === "income" && category === "Nomina";
@@ -2382,8 +2468,8 @@ function TransactionForm({
         <input className="input" name="description" required placeholder={placeholder} defaultValue={draft?.description || ""} />
       </Field>
       <div className="grid gap-3 md:grid-cols-2">
-        <Field label="Monto">
-          <input className="input" name="amount" type="number" step="0.01" min="0" required defaultValue={draft?.amount ?? ""} />
+        <Field label={method === "credit" ? "Total original de la compra" : "Monto real del movimiento"}>
+          <input className="input" name="amount" type="number" step="0.01" min="0.01" required defaultValue={draft?.amount ?? ""} />
         </Field>
         <Field label="Fecha">
           <input className="input" name="date" type="date" max={today} required defaultValue={draft?.date || today} />
@@ -2417,15 +2503,20 @@ function TransactionForm({
 
       {method === "credit" ? (
         <div data-tour="transactions-installments">
-          <Field label="Meses sin intereses">
-            <select className="input" name="installments" defaultValue={String(draft?.installments || 1)}>
-              <option value="1">Una exhibicion</option>
-              <option value="3">3 MSI</option>
-              <option value="6">6 MSI</option>
-            </select>
-          </Field>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="Plazo total en meses (1 = una exhibición)"><input className="input" name="totalInstallments" type="number" min="1" max="120" step="1" value={term} onChange={(event) => setTerm(Number(event.target.value))} required /></Field>
+            <Field label="Cuotas ya pagadas antes de este registro"><input className="input" name="currentInstallment" type="number" min="0" max={term} step="1" defaultValue={draft?.currentInstallment || 0} required /></Field>
+            {term > 1 ? <Field label="Mensualidad fija del banco"><input className="input" name="monthlyAmount" type="number" step="0.01" min="0.01" required defaultValue={draft?.monthlyAmount ?? ""} /></Field> : null}
+            <Field label="Mes del próximo pago"><input className="input" name="nextPaymentMonth" type="month" required={term > 1} defaultValue={draft?.nextPaymentMonth || ""} /></Field>
+          </div>
+          <p className="mb-4 text-sm text-slate-500">Para una compra que ya estás pagando, captura su total original y cuántas cuotas pagaste. Solo se agregará lo pendiente. El mes indicado corresponde al pago, según tu estado de cuenta.</p>
         </div>
       ) : null}
+      {method === "cash" || method === "credit" ? <div className="mb-4 rounded-lg border border-blue-100 p-4">
+        <label className="flex items-center gap-3"><input name="shared" type="checkbox" checked={shared} onChange={(event) => setShared(event.target.checked)} />Compartir esta compra con otra persona</label>
+        {shared ? <><Field label="Mi parte del monto total"><input className="input" name="userAmount" type="number" min="0" step="0.01" required defaultValue={draft?.userAmount ?? ""} /></Field><p className="text-sm text-slate-500">La tarjeta conserva el cargo completo. Tu parte es informativa; un reembolso se registra cuando lo recibas. En efectivo, captura la parte que realmente salió de tu dinero.</p></> : null}
+      </div> : null}
+      {method === "card_payment" ? <Field label="Aplicar al pago de (opcional)"><select className="input" name="paymentForPeriodId" defaultValue={draft?.paymentForPeriodId || ""}><option value="">Primero el más antiguo pendiente</option>{calculatePeriodsFor(state).filter((period) => (period.pendingCardPayment || 0) > 0 || period.id === draft?.paymentForPeriodId).map((period) => <option key={period.id} value={period.id}>{period.label} · {formatMoney(period.pendingCardPayment)}</option>)}</select></Field> : null}
 
       <div className="mt-6 grid gap-2 sm:grid-cols-2">
         <button className="button-primary w-full" type="submit">
@@ -2442,6 +2533,8 @@ function TransactionForm({
 }
 
 function RecurringView({
+  state,
+  onConfirm,
   recurring,
   draft,
   setDraft,
@@ -2450,6 +2543,8 @@ function RecurringView({
   onEdit,
   onDelete,
 }: {
+  state: AppState;
+  onConfirm: (transaction: Transaction) => void;
   recurring: RecurringItem[];
   draft: RecurringDraft;
   setDraft: (draft: RecurringDraft) => void;
@@ -2459,6 +2554,7 @@ function RecurringView({
   onDelete: (item: RecurringItem) => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const pending = recurringOccurrencesFor(state);
   const activeRecurring = recurring.filter((item) => item.active && item.amount > 0);
   const debitTotal = activeRecurring
     .filter((item) => item.method === "debit")
@@ -2482,7 +2578,7 @@ function RecurringView({
           <div>
             <p className="text-xs font-black uppercase text-slate-500">Debito programado</p>
             <strong className="mt-1 block text-2xl font-black text-navy">{formatMoney(debitTotal)}</strong>
-            <p className="mt-1 text-sm text-slate-600">Se descuenta del ahorro al llegar cada fecha.</p>
+            <p className="mt-1 text-sm text-slate-600">Se estima cada mes; descuenta saldo cuando confirmas el cargo.</p>
           </div>
         </div>
         <div className="recurring-impact-item">
@@ -2492,11 +2588,12 @@ function RecurringView({
           <div>
             <p className="text-xs font-black uppercase text-slate-500">TDC programada</p>
             <strong className="mt-1 block text-2xl font-black text-navy">{formatMoney(creditTotal)}</strong>
-            <p className="mt-1 text-sm text-slate-600">Aumenta el saldo ocupado al llegar cada fecha.</p>
+            <p className="mt-1 text-sm text-slate-600">Se agenda según el corte; aumenta la deuda al confirmar el cargo.</p>
           </div>
         </div>
       </section>
 
+      <section className="panel"><p className="eyebrow">Pendientes de confirmar</p><h3 className="mb-3 text-2xl text-navy">¿Ya se realizó el cargo?</h3><p className="mb-4 text-sm text-slate-500">Confirma únicamente los cargos que veas realizados. Si cambió el importe, confirma y edita ese movimiento. Modificar una suscripción cambia sus previsiones, conservando los cargos reales anteriores.</p>{pending.length ? <div className="grid gap-3">{pending.map(({ recurring, date, transaction }) => <article className="movement-row" key={transaction.id}><div><strong className="text-navy">{recurring.name}</strong><p className="text-sm text-slate-500">{date} · {formatMoney(transaction.amount)} · {recurring.method === "credit" ? "Tarjeta" : "Débito"}</p></div><button className="button-primary" onClick={() => onConfirm(transaction)}><Check size={16} />Confirmar cargo</button></article>)}</div> : <p className="text-sm text-slate-500">No hay cargos vencidos sin confirmar.</p>}</section>
       <div className="grid gap-5 xl:grid-cols-[minmax(320px,.75fr)_minmax(0,1.25fr)]">
         <form ref={formRef} className="panel self-start scroll-mt-24" onSubmit={onSubmit} data-tour="recurring-form">
           <p className="eyebrow">Editar</p>
@@ -2526,6 +2623,7 @@ function RecurringView({
               </select>
             </Field>
           </div>
+          <div className="grid gap-3 md:grid-cols-2"><Field label="A partir de"><input className="input" type="date" value={draft.startsOn || today} onChange={(event) => setDraft({ ...draft, startsOn: event.target.value })} required /></Field><Field label="Último día (opcional)"><input className="input" type="date" value={draft.endsOn || ""} onChange={(event) => setDraft({ ...draft, endsOn: event.target.value || undefined })} /></Field></div>
           <div className="mt-2 flex gap-2">
             <button className="button-primary flex-1" type="submit">
               <Check size={18} />
@@ -2553,8 +2651,8 @@ function RecurringView({
                       {item.method === "credit" ? <CreditCard size={14} /> : <WalletCards size={14} />}
                       {item.active
                         ? item.method === "credit"
-                          ? "Aumenta TDC en su fecha"
-                          : "Descuenta ahorro en su fecha"
+                          ? "TDC al confirmar el cargo"
+                          : "Descuenta saldo al confirmar"
                         : "Pausado: no se aplica"}
                     </span>
                   </div>
@@ -2573,135 +2671,6 @@ function RecurringView({
           ) : (
             <EmptyState title="Sin recurrentes" text="Captura servicios o suscripciones para tenerlos visibles." />
           )}
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function CardView({
-  state,
-  periods,
-  cardDebt,
-  onRegisterPayment,
-}: {
-  state: AppState;
-  periods: CalculatedPeriod[];
-  cardDebt: CardDebtSummary;
-  onRegisterPayment: (period: CalculatedPeriod) => void;
-}) {
-  const data = state.cardCalendar.map((entry) => ({ month: entry.month, total: entry.total, tuParte: entry.userPart, deuda: entry.debt }));
-  const paidByPeriod = state.transactions
-    .filter((transaction) => transaction.method === "card_payment")
-    .reduce<Map<string, number>>((paid, transaction) => {
-      paid.set(transaction.periodId, (paid.get(transaction.periodId) || 0) + asNumber(transaction.amount));
-      return paid;
-    }, new Map());
-  const paymentRows = periods
-    .map((period) => {
-      const planned = Math.max(0, -period.cardPayment);
-      const paid = paidByPeriod.get(period.id) || 0;
-      return {
-        period,
-        planned,
-        paid,
-        pending: Math.max(0, planned - paid),
-      };
-    })
-    .filter((entry) => entry.planned > 0);
-
-  return (
-    <div className="grid gap-5">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Pago al corte" value={formatMoney(cardDebt.nextPayment)} note="Proximo pago programado" icon={CalendarClock} />
-        <MetricCard label="Saldo utilizado TDC" value={formatMoney(cardDebt.totalDebt)} note="Total ocupado" icon={CreditCard} />
-        <MetricCard label="A meses / futuro" value={formatMoney(cardDebt.installmentBalance)} note="Despues del siguiente corte" icon={ChartSpline} />
-        <MetricCard label="Compras TDC" value={formatMoney(cardDebt.creditPurchases)} note="Movimientos registrados" icon={WalletCards} />
-      </section>
-
-      <section className="panel" data-tour="card-payment">
-        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="eyebrow">Pagos aplicados</p>
-            <h3 className="text-2xl font-black text-navy">Marcar pago de tarjeta</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              Cuando registres un pago, baja el saldo utilizado TDC. Si borras el movimiento de pago, se revierte.
-            </p>
-          </div>
-        </div>
-        {paymentRows.length ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {paymentRows.map(({ period, planned, paid, pending }) => (
-              <article key={period.id} className="rounded-lg border border-blue-100 bg-white p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <strong className="text-navy">{period.label}</strong>
-                    <p className="mt-1 text-sm text-slate-500">Pago planeado: {formatMoney(planned)}</p>
-                    <p className="text-sm text-slate-500">Ya registrado: {formatMoney(paid)}</p>
-                  </div>
-                  <span className={`pill shrink-0 ${pending <= 0 ? "money-positive" : "money-negative"}`}>
-                    {pending <= 0 ? "Pagado" : formatMoney(pending)}
-                  </span>
-                </div>
-                <button
-                  className="button-primary mt-4 w-full disabled:cursor-not-allowed disabled:opacity-60"
-                  type="button"
-                  disabled={pending <= 0}
-                  onClick={() => onRegisterPayment(period)}
-                >
-                  <Check size={18} />
-                  {pending <= 0 ? "Pago registrado" : "Marcar como pagado"}
-                </button>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <EmptyState title="Sin pagos TDC programados" text="Cuando una quincena tenga pago de tarjeta, aparecera aqui para marcarlo como aplicado." />
-        )}
-      </section>
-
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,.8fr)]">
-        <section className="panel" data-tour="card-chart">
-          <p className="eyebrow">Tarjeta</p>
-          <h3 className="mb-5 text-2xl font-black text-navy">Calendario TDC</h3>
-          <div className="h-64 sm:h-80">
-            <ResponsiveContainer>
-              <BarChart data={data}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} tickLine={false} axisLine={false} />
-                <Tooltip formatter={(value) => formatMoney(value)} />
-                <Legend />
-                <Bar dataKey="total" name="Total" fill="#2e75b6" radius={[12, 12, 0, 0]} />
-                <Bar dataKey="tuParte" name="Parte tuya" fill="#0f7f83" radius={[12, 12, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-5 grid gap-3" data-tour="card-list">
-            {state.cardCalendar.map((entry) => (
-              <article key={entry.month} className="flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-white p-4">
-                <div className="min-w-0">
-                  <strong className="text-navy">{entry.month}</strong>
-                  <p className="text-sm text-slate-500">Parte tuya: {formatMoney(entry.userPart)}</p>
-                </div>
-                <span className="pill shrink-0">{formatMoney(entry.total)}</span>
-              </article>
-            ))}
-          </div>
-        </section>
-        <section className="panel" data-tour="card-debt">
-          <p className="eyebrow">No recurrente</p>
-          <h3 className="mb-5 text-2xl font-black text-navy">Deuda estimada</h3>
-          <div className="grid gap-3">
-            {state.cardCalendar.map((entry) => (
-              <article key={entry.month} className="rounded-lg border border-blue-100 bg-white p-4">
-                <strong className="text-navy">{entry.month}</strong>
-                <p className="mt-2 text-sm">
-                  Saldo no recurrente: <span className={entry.debt <= 0 ? "money-positive" : "money-negative"}>{formatMoney(entry.debt)}</span>
-                </p>
-              </article>
-            ))}
-          </div>
         </section>
       </div>
     </div>
@@ -2747,7 +2716,7 @@ function ReportsView({
       <div className="mb-6 h-64 sm:h-80" data-tour="reports-chart">
         <ResponsiveContainer>
           <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#23344b" />
             <XAxis dataKey="month" tickLine={false} axisLine={false} />
             <YAxis tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} tickLine={false} axisLine={false} />
             <Tooltip formatter={(value) => formatMoney(value)} />
@@ -2836,7 +2805,7 @@ function SettingsView({
           </div>
           <button className="button-ghost text-red-700" type="button" onClick={onReset}>
             <RefreshCcw size={18} />
-            Restaurar plantilla
+            Nuevo plan desde cero
           </button>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -2850,10 +2819,11 @@ function SettingsView({
         <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50/50 p-4">
           <p className="eyebrow">Base de tarjeta</p>
           <p className="mt-2 text-sm text-slate-500">
-            El saldo utilizado debe coincidir con lo que muestra tu banco como credito usado total, no solo con el corte. Al agregar o borrar compras TDC, este saldo se ajusta con el monto completo.
+            Captura solo la deuda anterior que no vas a desglosar en compras. Los MSI que registres se suman automáticamente: no los incluyas también aquí. Para empezar desde cero, deja este campo en cero y agrega cada compra.
           </p>
           <div className="mt-4 max-w-md">
-            <Field label="Saldo utilizado TDC"><input className="input" name="usedCreditBalance" type="number" step="0.01" defaultValue={settings.usedCreditBalance} /></Field>
+            <Field label="Deuda inicial sin compras registradas"><input className="input" name="openingCardDebt" type="number" step="0.01" min="0" defaultValue={settings.openingCardDebt || 0} /></Field>
+            <Field label="Mes para liquidar la deuda inicial"><input className="input" name="openingCardPaymentMonth" type="month" defaultValue={settings.openingCardPaymentMonth || today.slice(0, 7)} required /></Field>
           </div>
         </div>
         <button className="button-primary mt-5" type="submit" data-tour="settings-save">

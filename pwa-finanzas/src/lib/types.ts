@@ -1,4 +1,8 @@
 export type Settings = {
+  openingSavings?: number;
+  openingRentReserve?: number;
+  openingCardDebt?: number;
+  openingCardPaymentMonth?: string;
   currentSavings: number;
   rentReserve: number;
   salary: number;
@@ -43,11 +47,21 @@ export type RecurringItem = {
   day: number;
   method: "debit" | "credit";
   active: boolean;
+  startsOn?: string;
+  endsOn?: string;
+  shared?: boolean;
+  userAmount?: number;
 };
 
 export type PaymentScheduleItem = {
   periodId: string;
   amount: number;
+  total?: number;
+  userAmount?: number;
+  dueDate?: string;
+  monthKey?: string;
+  installment?: number;
+  totalInstallments?: number;
 };
 
 export type Transaction = {
@@ -60,6 +74,14 @@ export type Transaction = {
   periodId: string;
   shared: boolean;
   installments: number;
+  monthlyAmount?: number;
+  totalInstallments?: number;
+  currentInstallment?: number;
+  installmentsAsOf?: string;
+  installmentPaymentIds?: string[];
+  nextPaymentMonth?: string;
+  userAmount?: number;
+  paymentForPeriodId?: string;
   paymentSchedule?: PaymentScheduleItem[];
   sourceRecurringId?: string;
   recurringDate?: string;
@@ -73,6 +95,12 @@ export type CardCalendarEntry = {
   total: number;
   userPart: number;
   debt: number;
+  monthKey?: string;
+  dueDate?: string;
+  paid?: number;
+  remaining?: number;
+  projected?: number;
+  installments?: Array<{ transactionId: string; description: string; installment: number; totalInstallments: number; amount: number; remaining: number }>;
 };
 
 export type CardDebtSummary = {
@@ -83,6 +111,10 @@ export type CardDebtSummary = {
   settingsBalance: number;
   creditPurchases: number;
   totalDebt: number;
+  creditBalance?: number;
+  overdue?: number;
+  knownNextPayment?: number;
+  nextPaymentIsEstimate?: boolean;
 };
 
 export type SyncSettings = {
@@ -100,6 +132,8 @@ export type AppState = {
   cardCalendar: CardCalendarEntry[];
   sync: SyncSettings;
   recurringLastAppliedDate?: string;
+  migrationWarnings?: string[];
+  legacySnapshot?: { cardCalendar: CardCalendarEntry[]; periodPayments: Array<{ periodId: string; amount: number }> };
 };
 
 export type CalculatedPeriod = Period & {
@@ -109,6 +143,11 @@ export type CalculatedPeriod = Period & {
   creditCharges: number;
   savings: number;
   salaryProjected?: boolean;
+  actualFlow: number;
+  projectedFlow: number;
+  actualCardPayment: number;
+  pendingCardPayment: number;
+  actualSavings: number;
 };
 
 export type MonthlyReport = {

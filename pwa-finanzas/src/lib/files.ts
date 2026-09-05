@@ -1,4 +1,5 @@
 import type { AppState, MonthlyReport } from "./types";
+import { validateBackup } from "./validation";
 
 export function downloadText(filename: string, text: string, type = "application/json"): void {
   const blob = new Blob([text], { type });
@@ -10,8 +11,15 @@ export function downloadText(filename: string, text: string, type = "application
   URL.revokeObjectURL(url);
 }
 
-export async function readJsonFile(file: File): Promise<unknown> {
-  return JSON.parse(await file.text());
+export async function readJsonFile(file: File): Promise<Partial<AppState>> {
+  if (file.size > 20 * 1024 * 1024) throw new Error("El respaldo supera el límite de 20 MB. No se modificaron tus datos.");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await file.text());
+  } catch {
+    throw new Error("No se pudo leer el archivo JSON. Elige un respaldo válido; tus datos siguen intactos.");
+  }
+  return validateBackup(parsed);
 }
 
 export function toCsv(rows: unknown[][]): string {

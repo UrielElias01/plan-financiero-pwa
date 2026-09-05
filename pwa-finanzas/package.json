@@ -11,6 +11,9 @@
     "check": "tsc -b && vite build --configLoader native",
     "check:private": "tsx ../tools/verify-pwa-calculations.mjs",
     "check:rollover": "tsx ../tools/verify-period-rollover.mjs",
+    "test": "tsx ../tools/verify-finance-engine.mjs && tsx ../tools/verify-period-rollover.mjs && tsx ../tools/verify-backups.mjs && node ../tools/verify-sync-worker.mjs",
+    "check:engine": "tsx ../tools/verify-finance-engine.mjs",
+    "check:backups": "tsx ../tools/verify-backups.mjs",
     "check:sync": "node ../tools/verify-sync-worker.mjs"
   },
   "dependencies": {

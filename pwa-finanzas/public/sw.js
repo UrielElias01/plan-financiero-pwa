@@ -1,4 +1,4 @@
-const CACHE_NAME = "plan-financiero-react-v18";
+const CACHE_NAME = "plan-financiero-react-v19";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -16,9 +16,9 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))),
+      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("plan-financiero-react-") && key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim()),
   );
-  self.clients.claim();
 });
 
 self.addEventListener("message", (event) => {

@@ -1,5 +1,6 @@
 import { normalizeState } from "./calculations";
 import type { AppState } from "./types";
+import { validateBackup } from "./validation";
 
 type EncryptedPayload = {
   version: number;
@@ -101,7 +102,7 @@ export async function decryptStateFromSync(payload: EncryptedPayload, passphrase
   const ciphertext = base64ToBytes(payload.ciphertext);
   const key = await deriveEncryptionKey(passphrase, salt);
   const plaintext = await getCrypto().subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
-  return normalizeState(JSON.parse(new TextDecoder().decode(plaintext)));
+  return normalizeState(validateBackup(JSON.parse(new TextDecoder().decode(plaintext))));
 }
 
 export async function fetchSync<T>(path: string, options: RequestInit = {}): Promise<T> {

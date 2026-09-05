@@ -4,19 +4,20 @@ PWA offline-first para administrar un plan financiero quincenal. El frontend est
 
 ## Funcionalidad
 
-- Resumen quincenal alimentado por movimientos reales.
-- Cierre de quincena sin cambios de saldo y alta del siguiente periodo.
-- Movimientos de ingreso, efectivo, debito, tarjeta y pago TDC.
-- Gastos recurrentes.
-- Calendario de pagos de tarjeta y MSI.
-- Saldo utilizado de tarjeta, separado del pago al corte.
-- Pagos en efectivo/debito y pagos TDC descontados del ahorro al registrarse.
-- Reportes mensuales con graficas.
+- Plan vacío con doce meses iniciales y una interfaz oscura adaptable.
+- Movimientos reales con alta, edición y eliminación; saldos recalculados en centavos.
+- Sueldo estimado quincenal sustituido por la nómina real.
+- Suscripciones proyectadas con confirmación explícita de cargos.
+- MSI de hasta 120 meses: mensualidad, cuotas pagadas antes del registro y próximo pago.
+- Calendario por mes y año con cuota, pagos aplicados y deuda restante.
+- Pagos TDC parciales, asignación por quincena y saldo a favor.
+- Reparto personal explícito; el pago bancario conserva el cargo completo.
+- Reportes que separan flujo real y estimaciones.
 - Manual dinamico con ayuda contextual por pantalla.
 - Tours guiados por modulo con foco visual, oscurecimiento, flechas y pasos detallados.
 - Consejos financieros accionables en `Inicio`, derivados de ahorro, TDC, recurrentes y flujo.
 - Busqueda/aplicacion de actualizaciones PWA desde `Ajustes`.
-- Importacion/exportacion JSON.
+- Importación JSON validada, exportación y migración de respaldos v1/v2.
 - Exportacion CSV.
 - Persistencia local en IndexedDB.
 - PWA instalable con service worker.
@@ -30,17 +31,18 @@ El boton `Tour` inicia una guia flotante que cambia de pantalla conforme avanzas
 
 ## Reglas financieras importantes
 
-- Todos los ingresos se registran en `Movimientos` y suman al ahorro.
-- `Nomina` aparta automaticamente la mitad de la renta mensual configurada.
-- `Efectivo / debito` baja `Ahorro actual` porque ese dinero ya salio.
-- Un reembolso o aportacion se registra como ingreso al recibirlo.
-- Una compra con `Tarjeta de credito` no baja el ahorro al capturarla; se agenda como pago futuro de TDC.
-- La pantalla `Tarjeta` muestra `Pago al corte` y `Saldo utilizado TDC`. Ese saldo debe coincidir con el credito usado que muestra el banco; en Ajustes puedes capturarlo directamente.
-- `Quincenas > Cerrar quincena` solo archiva el periodo; no cambia ahorro, renta ni tarjeta.
-- Cuando ya pagaste la renta con el dinero separado, usa `Ajustes > Apartado de renta > Renta pagada`.
-- Los recurrentes solo cambian saldos al llegar su fecha; si editas su dia o monto, la app revierte el movimiento automatico anterior.
+- El dinero disponible se deriva de saldos iniciales y movimientos reales. Guardar de nuevo no vuelve a aplicar un gasto.
+- La nómina aparta renta y sustituye la estimación de su quincena. Un ingreso extra se suma sin sustituirla.
+- Una compra con tarjeta no resta efectivo; cada cuota genera una obligación y el Pago TDC la cancela una sola vez.
+- Las cuotas pagadas antes de registrar una compra son el punto de partida. Los pagos posteriores se capturan como movimientos y no se vuelven a sumar a ese contador inicial.
+- La deuda inicial de Ajustes incluye solamente importes que no estén ya en compras registradas.
+- La parte personal de una compra compartida es informativa. Un reembolso se registra al recibirlo; no se descuenta automáticamente de la deuda bancaria.
+- Confirmar un cargo de suscripción lo convierte en movimiento real. Cambiar la suscripción conserva lo ya confirmado.
+- Cerrar una quincena no cambia dinero ni confirma pagos.
+- `Renta pagada` vacía el apartado, sin volver a descontarlo del disponible.
+- Las proyecciones dependen de tus datos; no incluyen cambios, comisiones o intereses que no hayas registrado.
 
-La documentacion completa del modelo esta en `../docs/FINANCIAL_MODEL.md`.
+La documentación completa está en [Modelo financiero](../docs/FINANCIAL_MODEL.md).
 
 ## Desarrollo local
 
@@ -62,7 +64,9 @@ http://127.0.0.1:4173/plan-financiero-pwa/
 ```powershell
 npm run build
 npm run check
+npm run check:engine
 npm run check:rollover
+npm run check:backups
 npm run check:sync
 ```
 
