@@ -35,6 +35,10 @@ jobs:
         working-directory: pwa-finanzas
         run: npm ci
 
+      - name: Verify financial regressions
+        working-directory: pwa-finanzas
+        run: npm test
+
       - name: Build React PWA
         working-directory: pwa-finanzas
         run: npm run build

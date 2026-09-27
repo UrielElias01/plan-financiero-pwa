@@ -22,14 +22,18 @@ La app publica no debe contener datos personales. Los importes reales viven en r
 - Plan vacío desde la fecha actual, con doce meses iniciales de proyección.
 - Ingresos y gastos reales con alta, edición y eliminación que recalculan saldos.
 - Sueldo estimado por quincena sustituido por la nómina registrada, sin duplicarlo.
-- Dinero disponible y apartado de renta separados.
+- Ahorro comprobado con fecha de saldo y próxima nómina pendiente, sin repetir sueldos ya gastados.
+- Ahorro libre y apartados de renta y comida separados, con elección del origen de cada pago.
+- Movimientos planeados que requieren confirmación aunque su fecha ya haya pasado.
 - MSI de hasta 120 cuotas, mensualidad bancaria, cuotas iniciales pagadas y próximo mes de pago.
 - Calendario por mes y año con pagos realizados, pendientes y detalle por compra.
 - Pagos parciales, asignación a una quincena y saldo a favor de tarjeta.
 - Reparto explícito por compra; la parte personal no reduce la deuda completa ante el banco.
 - Suscripciones proyectadas y confirmadas por el usuario, con historial protegido al editarlas.
 - Tablas y reportes que separan movimientos reales de estimaciones.
+- Proyección por fecha de ingresos y vencimientos para detectar faltantes antes del cierre quincenal.
 - Importación JSON validada y migración de respaldos antiguos con avisos de revisión.
+- Importación local de estados BBVA con revisión del corte, pago requerido, deuda y cuotas MSI antes de confirmar.
 - Exportación JSON/CSV, manual interno, ayuda contextual y tours.
 - Persistencia local en IndexedDB, PWA sin conexión y sync cifrado opcional.
 
@@ -40,11 +44,16 @@ La explicacion completa esta en [docs/FINANCIAL_MODEL.md](docs/FINANCIAL_MODEL.m
 Resumen corto:
 
 - Los saldos se recalculan desde las bases de conciliación y los movimientos; el calendario no es otra fuente de deuda.
+- La conciliación conserva una medición de dinero disponible. Editar el historial anterior no altera esa medición; los movimientos nuevos se pueden corregir o eliminar con recálculo de su efecto.
 - Cada cuota pendiente existe en un solo mes. Los pagos reales cancelan obligaciones una sola vez.
 - El sueldo y las suscripciones previstos no se convierten en dinero real al abrir la app.
+- El cierre estimado conserva únicamente el ahorro libre después de apartar renta, comida y obligaciones pendientes.
+- El último estado de cuenta concilia la tarjeta al corte; sus cargos no se suman otra vez como compras independientes.
 - La deuda inicial incluye solamente importes ausentes de las compras registradas.
 - Cerrar una quincena no modifica dinero ni marca pagos como realizados.
 - Las estimaciones usan centavos enteros y dependen de lo capturado; los cambios externos deben registrarse.
+
+La importación BBVA admite PDF, JSON, TXT, una plantilla CSV y captura manual para una tarjeta. Lee archivos en el dispositivo y requiere revisar los datos detectados. Los PDF deben tener texto seleccionable; un escaneo necesita transcripción. El lector propone campos del resumen y permite completar las compras MSI. Importar un estado no marca su pago como realizado. No hay conexión con el banco ni descarga automática. Los estados posteriores, pagos reales y cambios de precio deben registrarse para mantener vigente la proyección.
 
 ## Desarrollo local
 
@@ -80,11 +89,7 @@ C:\Users\uriel\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin
 C:\Users\uriel\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe .\node_modules\vite\bin\vite.js build --configLoader native
 ```
 
-Si tienes el respaldo privado local requerido por el verificador:
-
-```powershell
-npm run check:private
-```
+Las pruebas públicas usan importes ficticios y fechas fijas. Los casos de verificación con datos personales y sus respaldos se mantienen fuera del repositorio.
 
 ## Deploy
 
