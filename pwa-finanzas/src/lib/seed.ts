@@ -30,15 +30,18 @@ export function cloneSeed(asOf = dateInputValue()): AppState {
     periods.push(createPeriod(date.getUTCFullYear(), date.getUTCMonth() + 1, 2));
   }
   return {
-    version: 3, updatedAt: new Date().toISOString(),
+    version: 4, updatedAt: new Date().toISOString(),
     settings: {
       openingSavings: 0, openingRentReserve: 0, openingCardDebt: 0,
+      openingFoodReserve: 0, foodReserve: 0, monthlyFood: 0,
+      balanceAsOf: asOf,
+      nextPayday: `${year}-${String(month).padStart(2, "0")}-${String(day <= 15 ? 15 : new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, "0")}`,
       openingCardPaymentMonth: asOf.slice(0, 7),
       currentSavings: 0, rentReserve: 0, salary: 0, monthlyRent: 0, defaultFood: 0,
       chatGpt: 0, cutoffDay: 3, dueDay: 25, previousCardDebt: 0, previousCardPayment: 0,
       pointsPayment: 0, newJulyPurchases: 0, nonRecurringBalance: 0, usedCreditBalance: 0,
     },
-    periods, recurring: [], transactions: [], cardCalendar: [],
+    periods, recurring: [], transactions: [], statements: [], cardCalendar: [],
     sync: { endpoint: "https://plan-financiero-sync.uriel-plan-financiero.workers.dev", syncId: "" },
   };
 }

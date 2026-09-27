@@ -1,4 +1,12 @@
+import type { BankStatement } from "./bbva-types";
+
 export type Settings = {
+  balanceAsOf?: string;
+  balanceIncludedTransactionIds?: string[];
+  nextPayday?: string;
+  monthlyFood?: number;
+  foodReserve?: number;
+  openingFoodReserve?: number;
   openingSavings?: number;
   openingRentReserve?: number;
   openingCardDebt?: number;
@@ -88,6 +96,10 @@ export type Transaction = {
   skipPlanImpact?: boolean;
   affectsSavings?: boolean;
   rentReserveAmount?: number;
+  foodReserveAmount?: number;
+  fundingSource?: "savings" | "rent_reserve" | "food_reserve";
+  status?: "planned" | "confirmed";
+  remainingPrincipalAmount?: number;
 };
 
 export type CardCalendarEntry = {
@@ -115,6 +127,8 @@ export type CardDebtSummary = {
   overdue?: number;
   knownNextPayment?: number;
   nextPaymentIsEstimate?: boolean;
+  unallocatedDebt?: number;
+  reconciliationWarning?: string;
 };
 
 export type SyncSettings = {
@@ -129,6 +143,7 @@ export type AppState = {
   periods: Period[];
   recurring: RecurringItem[];
   transactions: Transaction[];
+  statements?: BankStatement[];
   cardCalendar: CardCalendarEntry[];
   sync: SyncSettings;
   recurringLastAppliedDate?: string;
@@ -143,14 +158,17 @@ export type CalculatedPeriod = Period & {
   creditCharges: number;
   savings: number;
   salaryProjected?: boolean;
+  reserveUsed?: number;
   actualFlow: number;
   projectedFlow: number;
   actualCardPayment: number;
   pendingCardPayment: number;
   actualSavings: number;
+  foodReserve?: number;
 };
 
 export type MonthlyReport = {
+  reserveUsed?: number;
   month: string;
   income: number;
   cashExpenses: number;
@@ -161,4 +179,4 @@ export type MonthlyReport = {
   cardTotal: number;
 };
 
-export type ViewId = "dashboard" | "periods" | "transactions" | "recurring" | "card" | "reports" | "settings" | "guide";
+export type ViewId = "dashboard" | "periods" | "transactions" | "recurring" | "card" | "statements" | "reports" | "settings" | "guide";

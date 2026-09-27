@@ -24,13 +24,25 @@ function rejects(edit, pattern = /Respaldo inválido/) {
   assert.throws(() => validateBackup(state), pattern);
 }
 
-for (const version of [1, 2, 3]) {
+for (const version of [1, 2, 3, 4]) {
   const state = blank();
   state.version = version;
   state.periods.push({ id: "2030-02-h1", cardPayment: -25, rent: -50 });
   assert.equal(validateBackup(state), state, `preserve legitimate v${version} backups`);
 }
 assert.doesNotThrow(() => validateBackup(cloneSeed()));
+const reconciled = blank();
+reconciled.version = 4;
+reconciled.settings = {
+  ...reconciled.settings,
+  balanceAsOf: "2030-02-02", nextPayday: "2030-02-15",
+  balanceIncludedTransactionIds: ["included-payroll"],
+  monthlyFood: 400, openingFoodReserve: 100, foodReserve: 100,
+};
+reconciled.transactions.push({
+  ...purchase(), status: "planned", remainingPrincipalAmount: 150,
+});
+assert.equal(validateBackup(reconciled).transactions[0].status, "planned", "validation must preserve an explicitly planned movement");
 assert.throws(() => validateBackup(null), /objeto/);
 assert.throws(() => validateBackup([]), /objeto/);
 rejects((state) => { state.version = 99; });
@@ -42,6 +54,12 @@ rejects((state) => { state.transactions[0].amount = Infinity; });
 rejects((state) => { state.transactions[0].amount = -10; });
 rejects((state) => { state.settings.salary = null; });
 rejects((state) => { state.settings.cutoffDay = 32; });
+rejects((state) => { state.settings.balanceAsOf = "2030-02-30"; });
+rejects((state) => { state.settings.nextPayday = "not-a-date"; });
+rejects((state) => { state.settings.monthlyFood = -1; });
+rejects((state) => { state.settings.foodReserve = Infinity; });
+rejects((state) => { state.settings.balanceIncludedTransactionIds = ["one", "one"]; }, /duplicados/);
+rejects((state) => { state.settings.balanceIncludedTransactionIds = [42]; });
 rejects((state) => { state.transactions[0].date = "2030-02-30"; }, /inexistente/);
 rejects((state) => { state.transactions[0].date = "0000-02-01"; }, /1900/);
 rejects((state) => { state.transactions[0].nextPaymentMonth = "9999-12"; }, /2200/);
@@ -56,6 +74,43 @@ rejects((state) => { state.transactions[0].installmentPaymentIds = [123]; });
 rejects((state) => { state.transactions[0].installmentPaymentIds = ["payment-a", "payment-a"]; }, /duplicados/);
 rejects((state) => { state.transactions[0].userAmount = 251; });
 rejects((state) => { state.transactions[0].method = "unknown"; });
+rejects((state) => { state.transactions[0].status = "paid"; });
+rejects((state) => { state.transactions[0].fundingSource = "unrecognized"; });
+rejects((state) => { state.transactions[0].fundingSource = "food_reserve"; }, /salida de dinero/);
+rejects((state) => { state.transactions[0].remainingPrincipalAmount = 251; }, /importe original/);
+rejects((state) => { state.transactions[0].foodReserveAmount = -1; });
+rejects((state) => {
+  Object.assign(state.transactions[0], { method: "income", rentReserveAmount: 200, foodReserveAmount: 100 });
+}, /más que el ingreso/);
+const reserveSpend = blank();
+reserveSpend.transactions.push({ ...purchase(), method: "cash", status: "confirmed", fundingSource: "food_reserve" });
+assert.doesNotThrow(() => validateBackup(reserveSpend), "spending reserved food money is a supported cash source");
+const statementBackup = () => ({
+  ...blank(), version: 4,
+  statements: [{
+    id: "bbva-2030-02-03", issuer: "BBVA", periodStart: "2030-01-04", cutoffDate: "2030-02-03", dueDate: "2030-02-23",
+    paymentToAvoidInterest: 120, minimumPayment: 20, totalDebt: 269.99, installmentBalance: 149.99,
+    importedAt: "2030-02-04T12:00:00.000Z",
+    installments: [{ id: "synthetic-msi", merchant: "Comercio de prueba", originalAmount: 300, monthlyAmount: 50,
+      billedInstallment: 3, totalInstallments: 6, remainingBalance: 149.99 }],
+  }],
+});
+const statementPlan = statementBackup();
+assert.equal(validateBackup(statementPlan).statements[0].totalDebt, 269.99);
+assert.equal(statementPlan.transactions.length, 0, "validating a statement does not invent a payment transaction");
+for (const mutate of [
+  (state) => { state.statements.push(structuredClone(state.statements[0])); },
+  (state) => { state.statements[0].totalDebt = 270; },
+  (state) => { state.statements[0].installments = []; },
+  (state) => { state.statements[0].installments[0].billedInstallment = 7; },
+  (state) => { state.statements[0].dueDate = "2030-02-02"; },
+  (state) => { state.statements[0].importedAt = "invalid"; },
+  (state) => { state.statements[0].id = "different-cutoff"; },
+]) {
+  const invalidStatement = statementBackup();
+  mutate(invalidStatement);
+  assert.throws(() => validateBackup(invalidStatement), /Respaldo inválido/, "inconsistent bank data must be rejected before replacing a plan");
+}
 rejects((state) => {
   const transaction = state.transactions[0];
   transaction.sourceRecurringId = "recurring-a";

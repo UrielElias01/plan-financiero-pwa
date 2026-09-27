@@ -9,7 +9,7 @@ import {
 import { cloneSeed } from "../pwa-finanzas/src/lib/seed.ts";
 
 const AS_OF = "2027-02-10";
-const state = () => cloneSeed(AS_OF);
+const state = () => ({ ...cloneSeed(AS_OF), updatedAt: AS_OF + "T12:00:00Z" });
 const tx = (patch = {}) => ({ id: "purchase", date: AS_OF, description: "Fictional purchase", amount: 600, category: "Hogar", method: "credit", periodId: "2027-02-h1", shared: false, installments: 6, monthlyAmount: 100, totalInstallments: 6, currentInstallment: 0, nextPaymentMonth: "2027-03", ...patch });
 const payment = (patch = {}) => tx({ id: "payment", method: "card_payment", amount: 40, installments: 1, totalInstallments: 1, monthlyAmount: undefined, nextPaymentMonth: undefined, affectsSavings: true, ...patch });
 const sum = (items, field) => items.reduce((total, item) => total + toCents(item[field]), 0) / 100;
@@ -116,7 +116,7 @@ test("current period includes unreceived salary, extra incomes and recurring pro
 });
 
 test("recurring charges stay estimated until confirmed and confirmation is idempotent", () => {
-  let input = reconcileCashBalanceFor(state(), 100, 0, AS_OF);
+  let input = reconcileCashBalanceFor(state(), 100, 0, "2027-02-01");
   input.recurring = [{ id: "music", name: "Music", amount: 10, day: 9, method: "debit", active: true, startsOn: "2027-02-01" }];
   assert.equal(recurringOccurrencesFor(input, AS_OF).length, 1);
   assert.equal(input.settings.currentSavings, 100);
@@ -134,7 +134,7 @@ test("recurring charges stay estimated until confirmed and confirmation is idemp
 });
 
 test("credit subscription confirmation replaces forecast exactly and changes actual debt only once", () => {
-  let input = state(); input.recurring = [{ id: "hosting", name: "Hosting", amount: 12, day: 9, method: "credit", active: true, startsOn: "2027-02-01" }];
+  let input = state(); input.settings.balanceAsOf = "2027-02-01"; input.recurring = [{ id: "hosting", name: "Hosting", amount: 12, day: 9, method: "credit", active: true, startsOn: "2027-02-01" }];
   const before = sum(calculatePeriodsFor(input, AS_OF), "pendingCardPayment");
   assert.equal(calculateCardDebtFor(input, undefined, AS_OF).totalDebt, 0);
   input = materializeDueRecurringTransactions(input, AS_OF).state;
@@ -153,7 +153,8 @@ test("planned future payment reduces later obligation once and does not change a
   assert.equal(periods.find((item) => item.id === "2027-03-h2").pendingCardPayment, 60);
   assert.equal(sum(periods, "pendingCardPayment"), 100);
   const afterDate = normalizeState(input, "2027-02-21");
-  assert.equal(afterDate.settings.currentSavings, 960); assert.equal(afterDate.settings.usedCreditBalance, 60);
+  assert.equal(afterDate.settings.currentSavings, 1000); assert.equal(afterDate.settings.usedCreditBalance, 100);
+  assert.equal(afterDate.transactions.find((item) => item.id === "payment").status, "planned");
 });
 
 test("shared expenses require explicit amount and bank debt stays gross until reimbursement arrives", () => {

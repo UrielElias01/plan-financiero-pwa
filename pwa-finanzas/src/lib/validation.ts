@@ -1,4 +1,5 @@
 import type { AppState } from "./types";
+import { validateStatement } from "./bbva";
 
 type RecordValue = Record<string, unknown>;
 
@@ -69,6 +70,15 @@ function timestamp(value: unknown, path: string): void {
   if (!Number.isFinite(Date.parse(value))) invalid(path, "debe contener una fecha válida");
 }
 
+function uniqueTextList(value: unknown, path: string): void {
+  const values = new Set<string>();
+  list(value, path).forEach((entry) => {
+    text(entry, path);
+    if (values.has(entry)) invalid(path, "contiene IDs duplicados");
+    values.add(entry);
+  });
+}
+
 function uniqueRows(value: unknown, path: string, check: (row: RecordValue, path: string) => void): void {
   const ids = new Set<string>();
   list(value, path).forEach((entry, index) => {
@@ -102,18 +112,20 @@ function calendar(value: unknown, path: string): void {
 /** Validate before migration so malformed data cannot be coerced into a plausible balance. */
 export function validateBackup(input: unknown): Partial<AppState> {
   const state = record(input, "archivo");
-  optional(state, "version", "archivo", (value, path) => integer(value, path, 1, 3));
+  optional(state, "version", "archivo", (value, path) => integer(value, path, 1, 4));
   optional(state, "updatedAt", "archivo", timestamp);
   optional(state, "recurringLastAppliedDate", "archivo", date);
   const settings = record(state.settings, "settings");
-  for (const key of ["currentSavings", "openingSavings", "openingRentReserve", "rentReserve"]) {
+  for (const key of ["currentSavings", "openingSavings", "openingRentReserve", "rentReserve", "openingFoodReserve", "foodReserve"]) {
     optional(settings, key, "settings", (value, path) => amount(value, path, true));
   }
-  for (const key of ["salary", "monthlyRent", "defaultFood", "chatGpt", "previousCardDebt", "previousCardPayment", "pointsPayment", "newJulyPurchases", "nonRecurringBalance", "usedCreditBalance", "openingCardDebt"]) {
+  for (const key of ["salary", "monthlyRent", "monthlyFood", "defaultFood", "chatGpt", "previousCardDebt", "previousCardPayment", "pointsPayment", "newJulyPurchases", "nonRecurringBalance", "usedCreditBalance", "openingCardDebt"]) {
     optional(settings, key, "settings", amount);
   }
   for (const key of ["cutoffDay", "dueDay"]) optional(settings, key, "settings", (value, path) => integer(value, path, 1, 31));
   optional(settings, "openingCardPaymentMonth", "settings", month);
+  for (const key of ["balanceAsOf", "nextPayday"]) optional(settings, key, "settings", date);
+  optional(settings, "balanceIncludedTransactionIds", "settings", uniqueTextList);
 
   uniqueRows(state.periods, "periods", (row, path) => {
     periodId(row.id, `${path}.id`);
@@ -144,29 +156,35 @@ export function validateBackup(input: unknown): Partial<AppState> {
     periodId(row.periodId, `${path}.periodId`);
     for (const key of ["description", "category"]) optional(row, key, path, (value, location) => text(value, location, true));
     if (!["income", "credit", "cash", "card_payment"].includes(row.method as string)) invalid(`${path}.method`, "no es un tipo de movimiento reconocido");
+    optional(row, "status", path, (value, location) => {
+      if (value !== "planned" && value !== "confirmed") invalid(location, "debe ser planned o confirmed");
+    });
+    optional(row, "fundingSource", path, (value, location) => {
+      if (!["savings", "rent_reserve", "food_reserve"].includes(value as string)) invalid(location, "no es un origen de dinero reconocido");
+      if (value !== "savings" && row.method !== "cash" && row.method !== "card_payment") invalid(location, "solo puede usar un apartado al registrar una salida de dinero");
+    });
     ownership(row, path);
     for (const key of ["installments", "totalInstallments"]) optional(row, key, path, (value, location) => integer(value, location, 1, 120));
     const total = Number(row.totalInstallments ?? row.installments ?? 1);
     optional(row, "currentInstallment", path, (value, location) => integer(value, location, 0, total));
     optional(row, "installmentsAsOf", path, date);
-    if (row.installmentPaymentIds !== undefined) {
-      const ids = new Set<string>();
-      list(row.installmentPaymentIds, `${path}.installmentPaymentIds`).forEach((value) => {
-        text(value, `${path}.installmentPaymentIds`);
-        if (ids.has(value)) invalid(`${path}.installmentPaymentIds`, "contiene IDs duplicados");
-        ids.add(value);
-      });
-    }
+    optional(row, "installmentPaymentIds", path, uniqueTextList);
     optional(row, "monthlyAmount", path, amount);
     optional(row, "nextPaymentMonth", path, month);
     optional(row, "paymentForPeriodId", path, periodId);
     optional(row, "rentReserveAmount", path, amount);
+    optional(row, "foodReserveAmount", path, amount);
+    if (row.method === "income" && Math.round(Number(row.rentReserveAmount ?? 0) * 100) + Math.round(Number(row.foodReserveAmount ?? 0) * 100) > Math.round(row.amount * 100)) {
+      invalid(path, "no puede apartar para renta y comida más que el ingreso recibido");
+    }
+    optional(row, "remainingPrincipalAmount", path, amount);
+    if (typeof row.remainingPrincipalAmount === "number" && row.remainingPrincipalAmount > row.amount) invalid(`${path}.remainingPrincipalAmount`, "no puede superar el importe original");
     for (const key of ["skipPlanImpact", "affectsSavings"]) optional(row, key, path, boolean);
     optional(row, "sourceRecurringId", path, text);
     optional(row, "recurringDate", path, date);
-    if (row.sourceRecurringId && row.recurringDate) {
-      const key = JSON.stringify([row.sourceRecurringId, row.recurringDate]);
-      if (recurringOccurrences.has(key)) invalid(path, "duplica un cargo de suscripción en la misma fecha");
+    if (row.sourceRecurringId) {
+      const key = JSON.stringify([row.sourceRecurringId, String(row.recurringDate || row.date).slice(0, 7)]);
+      if (recurringOccurrences.has(key)) invalid(path, "duplica un cargo de suscripción en el mismo mes");
       recurringOccurrences.add(key);
     }
     if (row.paymentSchedule !== undefined) list(row.paymentSchedule, `${path}.paymentSchedule`).forEach((entry, index) => {
@@ -183,6 +201,16 @@ export function validateBackup(input: unknown): Partial<AppState> {
   });
 
   optional(state, "cardCalendar", "archivo", calendar);
+  if (state.statements !== undefined) {
+    uniqueRows(state.statements, "statements", (row, path) => {
+      timestamp(row.importedAt, `${path}.importedAt`);
+      try {
+        validateStatement(row);
+      } catch (error) {
+        invalid(path, error instanceof Error ? error.message : "contiene un estado de cuenta inválido");
+      }
+    });
+  }
   if (state.sync !== undefined) {
     const sync = record(state.sync, "sync");
     for (const key of ["endpoint", "syncId"]) optional(sync, key, "sync", (value, path) => text(value, path, true));

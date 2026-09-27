@@ -9,18 +9,19 @@
     "build": "tsc -b && vite build --configLoader native",
     "preview": "vite preview --configLoader native --host 127.0.0.1 --port 4173",
     "check": "tsc -b && vite build --configLoader native",
-    "check:private": "tsx ../tools/verify-pwa-calculations.mjs",
     "check:rollover": "tsx ../tools/verify-period-rollover.mjs",
-    "test": "tsx ../tools/verify-finance-engine.mjs && tsx ../tools/verify-period-rollover.mjs && tsx ../tools/verify-backups.mjs && node ../tools/verify-sync-worker.mjs",
+    "test": "tsx ../tools/verify-finance-engine.mjs && tsx ../tools/verify-period-rollover.mjs && tsx ../tools/verify-backups.mjs && tsx ../tools/verify-bbva.mjs && tsx ../tools/verify-statement-ledger.mjs && node ../tools/verify-sync-worker.mjs",
     "check:engine": "tsx ../tools/verify-finance-engine.mjs",
     "check:backups": "tsx ../tools/verify-backups.mjs",
-    "check:sync": "node ../tools/verify-sync-worker.mjs"
+    "check:sync": "node ../tools/verify-sync-worker.mjs",
+    "check:bbva": "tsx ../tools/verify-bbva.mjs && tsx ../tools/verify-statement-ledger.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "10.4.20",
     "graphify": "^1.0.0",
     "lucide-react": "0.468.0",
+    "pdfjs-dist": "^6.3.289",
     "ponytail": "git+https://github.com/DietrichGebert/ponytail.git",
     "postcss": "^8.5.15",
     "react": "18.3.1",
