@@ -271,6 +271,13 @@ html:has([role="dialog"]), body:has([role="dialog"]) { overflow: hidden; }
 .tour-progress-dots::-webkit-scrollbar { display: none; }
 html.mobile-menu-open, body.mobile-menu-open { overscroll-behavior: none; }
 .mobile-menu-shell { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+.liquidity-warning { display: flex; align-items: flex-start; gap: 0.85rem; padding: 1rem; color: #ffbac6; background: #341e2a; border: 1px solid #77394d; border-radius: 0.8rem; }
+.liquidity-warning > svg { flex-shrink: 0; }
+.liquidity-list { list-style: none; padding: 0; }
+.liquidity-day { display: grid; grid-template-columns: 7rem minmax(0, 1fr) auto; align-items: start; gap: 1rem; padding: 1rem 0; border-top: 1px solid var(--line-soft); }
+.liquidity-date { width: fit-content; padding: 0.35rem 0.5rem; border: 1px solid #305065; border-radius: 0.45rem; color: var(--cyan); background: #142c3b; font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.liquidity-balance { text-align: right; font-variant-numeric: tabular-nums; }
+.movement-row > div:last-child { flex-wrap: wrap; }
 .dashboard-stack > * { animation: contentRise 360ms ease both; }
 .dashboard-stack > :nth-child(2) { animation-delay: 45ms; }
 .dashboard-stack > :nth-child(3) { animation-delay: 90ms; }
@@ -313,6 +320,8 @@ html.mobile-menu-open, body.mobile-menu-open { overscroll-behavior: none; }
   .table-scroll :is(th, td):first-child { max-width: 8rem; }
 }
 @media (max-width: 480px) {
+  .liquidity-day { grid-template-columns: minmax(0, 1fr) auto; gap: 0.65rem; }
+  .liquidity-date { grid-column: 1 / -1; }
   .button-primary, .button-secondary, .button-ghost, .button-danger { padding: 0.65rem 0.8rem; font-size: 0.77rem; white-space: normal; text-align: center; }
   .app-header-actions { display: flex; width: 100%; flex-wrap: wrap; }
   .app-header-actions > button, .app-header-actions > label { min-width: 0; }

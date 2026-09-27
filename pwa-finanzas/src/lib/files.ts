@@ -42,9 +42,9 @@ export function exportStateJson(state: AppState, today: string): void {
 }
 
 export function exportMonthlyCsv(monthly: MonthlyReport[], today: string): void {
-  const rows: unknown[][] = [["Mes", "Ingresos", "Gastos efectivo", "Pago TDC", "Flujo", "Ahorro cierre"]];
+  const rows: unknown[][] = [["Mes", "Ingresos", "Gastos y apartados", "Pago TDC", "Desde apartados", "Flujo", "Ahorro libre al cierre"]];
   for (const row of monthly) {
-    rows.push([row.month, row.income, row.cashExpenses, row.cardPayment, row.flow, row.savings]);
+    rows.push([row.month, row.income, row.cashExpenses, row.cardPayment, row.reserveUsed || 0, row.flow, row.savings]);
   }
   downloadText(`reporte-mensual-${today}.csv`, toCsv(rows), "text/csv");
 }

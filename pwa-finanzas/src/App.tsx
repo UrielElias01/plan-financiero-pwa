@@ -1,4 +1,5 @@
 import { CardView } from "./CardView";
+import { BBVAImport } from "./BBVAImport";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, ReactNode, RefObject } from "react";
 import {
@@ -27,6 +28,7 @@ import {
   CreditCard,
   Download,
   FileJson,
+  FileText,
   LayoutDashboard,
   Lightbulb,
   ListChecks,
@@ -57,6 +59,7 @@ import {
   closePeriodFor,
   duePeriodsFor,
   formatMoney,
+  liquidityTimelineFor,
   normalizeState,
   paydayForPeriod,
   periodIdForDate,
@@ -66,6 +69,8 @@ import {
   signedTone,
 } from "./lib/calculations";
 import { exportMonthlyCsv, exportStateJson, readJsonFile } from "./lib/files";
+import { sameStatement, validateStatement } from "./lib/bbva";
+import type { BankStatement } from "./lib/bbva-types";
 import { cloneSeed, today } from "./lib/seed";
 import { loadState, saveState } from "./lib/storage";
 import { decryptStateFromSync, encryptStateForSync, fetchSync, normalizeEndpoint, syncSecret } from "./lib/sync";
@@ -112,6 +117,7 @@ const navItems: NavItem[] = [
   { id: "transactions", label: "Movimientos", short: "M", icon: WalletCards },
   { id: "recurring", label: "Recurrentes", short: "R", icon: ListChecks },
   { id: "card", label: "Tarjeta", short: "TC", icon: CreditCard },
+  { id: "statements", label: "Estados BBVA", short: "EC", icon: FileText },
   { id: "reports", label: "Reportes", short: "RP", icon: ChartSpline },
   { id: "settings", label: "Ajustes", short: "AJ", icon: Settings },
   { id: "guide", label: "Manual", short: "MA", icon: BookOpen },
@@ -185,7 +191,7 @@ const guideTopics: GuideTopic[] = [
       "Pulsa Registrar movimiento para abrir el modal.",
       "Elige nomina, ingreso extra, debito/efectivo, tarjeta o pago TDC.",
       "Captura la fecha real; la quincena se asigna sola.",
-      "Nomina e ingresos extra suman al ahorro; los gastos reales lo restan.",
+      "La nómina aparta renta y comida; el sobrante aumenta el ahorro libre. Registra los gastos desde el ahorro o desde su apartado.",
       "Para MSI indica mensualidad, plazo, cuotas pagadas antes de registrarla y próximo mes de pago. El día límite asigna la quincena.",
     ],
     tip: "Si alguien te reembolsa una parte, registra ese dinero como ingreso cuando lo recibas.",
@@ -221,6 +227,21 @@ const guideTopics: GuideTopic[] = [
     tip: "La tarjeta se entiende mejor por fecha de pago: mira sobre todo las segundas quincenas.",
     icon: CreditCard,
     accent: "from-slate-800 to-blue-600",
+  },
+  {
+    id: "statements",
+    title: "Estados BBVA",
+    summary: "Convierte el resumen del corte y el detalle de MSI en obligaciones con fecha de pago.",
+    editable: ["PDF con texto, JSON, CSV o captura manual", "Fechas de corte y pago", "Detalle de MSI y saldo diferido"],
+    steps: [
+      "Abre el archivo y revisa los campos detectados contra tu estado de cuenta.",
+      "Completa cada MSI con la cuota facturada y el saldo que queda después de esa cuota.",
+      "Confirma cuando el resumen y las mensualidades concilien al centavo.",
+      "Registra el pago cuando lo realices; importar un estado no ejecuta pagos.",
+    ],
+    tip: "El último corte sustituye las compras ya incluidas en él. Volver a importar el mismo corte no duplica la deuda.",
+    icon: FileText,
+    accent: "from-sky-700 to-cyan-500",
   },
   {
     id: "reports",
@@ -562,14 +583,13 @@ function isClosedPeriod(state: AppState, periodId: string): boolean {
 function transactionMethodLabel(method: Transaction["method"]): string {
   if (method === "income") return "Ingreso";
   if (method === "credit") return "Tarjeta de credito";
-  if (method === "card_payment") return "Pago TDC aplicado";
+  if (method === "card_payment") return "Pago TDC";
   return "Efectivo / debito";
 }
 
 function payrollRentReserve(state: AppState, previousReserve = 0): number {
-  const monthlyRent = Math.max(0, asNumber(state.settings.monthlyRent));
-  const reserveBeforeEdit = Math.max(0, state.settings.rentReserve - previousReserve);
-  return Math.min(monthlyRent / 2, Math.max(0, monthlyRent - reserveBeforeEdit));
+  void previousReserve;
+  return Math.round(Math.max(0, asNumber(state.settings.monthlyRent)) * 100 / 2) / 100;
 }
 
 function MetricCard({
@@ -857,7 +877,7 @@ function buildFinancialInsights(
       id: "projected-recovery",
       title: "Cierre mejora",
       value: formatMoney(finalSavings - currentSavings),
-      detail: "El plan proyecta recuperar ahorro hacia noviembre.",
+      detail: "El plan proyecta aumentar el ahorro al final del horizonte mostrado.",
       action: "Protege esa mejora evitando gastos recurrentes nuevos.",
       tone: "ok",
       icon: Sparkles,
@@ -1209,7 +1229,11 @@ export function App() {
       confirmText: "Renta pagada",
     });
     if (!confirmed) return;
-    await commit(reconcileCashBalanceFor(state, state.settings.currentSavings, 0), "Renta apartada restablecida");
+    const transaction: Transaction = { id: crypto.randomUUID(), date: today, description: "Renta pagada desde su apartado", amount: rentReserve, category: "Renta", method: "cash", periodId: periodIdForDate(state, today), installments: 1, shared: false, status: "confirmed", fundingSource: "rent_reserve" };
+    if (isClosedPeriod(state, transaction.periodId)) {
+      showToast("Reabre la quincena actual antes de registrar este pago.", "danger"); return;
+    }
+    await commit(applyTransactionToState({ ...state, transactions: [...state.transactions, transaction] }, transaction), "Renta pagada y registrada desde su apartado");
   }
 
   async function submitTransaction(event: FormEvent<HTMLFormElement>) {
@@ -1225,17 +1249,24 @@ export function App() {
             ? "credit"
             : "cash";
     const date = getField(form, "date") || today;
+    const status: Transaction["status"] = getField(form, "status") === "planned" ? "planned" : "confirmed";
+    const amount = asNumber(getField(form, "amount"));
     const category = method === "card_payment" ? "Pago TDC" : getField(form, "category");
     const periodId = periodIdForDate(state, date);
+    const originalPayroll = transactionDraft?.method === "income" && transactionDraft.category.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "nomina" ? transactionDraft : undefined;
     const rentReserveAmount =
       method === "income" && category === "Nomina"
-        ? payrollRentReserve(state, asNumber(transactionDraft?.rentReserveAmount))
+        ? Math.min(amount, originalPayroll?.rentReserveAmount ?? payrollRentReserve(state))
         : 0;
+    const foodReserveAmount = method === "income" && category === "Nomina"
+      ? Math.min(Math.max(0, amount - rentReserveAmount), originalPayroll?.foodReserveAmount ?? Math.round(asNumber(state.settings.monthlyFood) * 100 / 2) / 100)
+      : 0;
     const transactionBase: Transaction = {
       id: transactionDraft?.id || crypto.randomUUID(),
       date,
+      status,
       description: getField(form, "description").trim(),
-      amount: asNumber(getField(form, "amount")),
+      amount,
       category,
       method,
       periodId,
@@ -1244,10 +1275,11 @@ export function App() {
       installments: method === "credit" ? asNumber(getField(form, "totalInstallments"), 1) : 1,
       totalInstallments: method === "credit" ? asNumber(getField(form, "totalInstallments"), 1) : 1,
       monthlyAmount: method === "credit" && getField(form, "monthlyAmount") ? asNumber(getField(form, "monthlyAmount")) : undefined,
+      remainingPrincipalAmount: method === "credit" && getField(form, "remainingPrincipalAmount") ? asNumber(getField(form, "remainingPrincipalAmount")) : undefined,
       currentInstallment: method === "credit" ? asNumber(getField(form, "currentInstallment")) : 0,
       installmentPaymentIds: method === "credit" && asNumber(getField(form, "currentInstallment")) > 0
         ? transactionDraft?.currentInstallment === asNumber(getField(form, "currentInstallment")) ? transactionDraft.installmentPaymentIds
-          : state.transactions.filter((entry) => entry.method === "card_payment" && entry.date <= today).map((entry) => entry.id)
+          : state.transactions.filter((entry) => entry.method === "card_payment" && entry.status !== "planned" && entry.date <= today).map((entry) => entry.id)
         : undefined,
       nextPaymentMonth: method === "credit" ? getField(form, "nextPaymentMonth") || undefined : undefined,
       installmentsAsOf: method === "credit" && asNumber(getField(form, "currentInstallment")) > 0
@@ -1262,6 +1294,8 @@ export function App() {
           ? transactionDraft.affectsSavings
           : method !== "credit",
       rentReserveAmount,
+      foodReserveAmount,
+      fundingSource: method === "cash" || method === "card_payment" ? (getField(form, "fundingSource") || "savings") as Transaction["fundingSource"] : "savings",
     };
     if (transactionBase.amount <= 0) {
       showToast("El monto debe ser mayor a cero", "danger");
@@ -1280,12 +1314,9 @@ export function App() {
       if (total > 1 && (!transactionBase.monthlyAmount || !transactionBase.nextPaymentMonth)) {
         showToast("Indica la mensualidad del banco y el mes de la próxima cuota.", "danger"); return;
       }
-      if (transactionBase.monthlyAmount && Math.abs(Math.round(transactionBase.monthlyAmount * 100) * total - Math.round(transactionBase.amount * 100)) > total) {
-        showToast("La mensualidad por el plazo debe coincidir con el total de la compra (tolerancia de un centavo por cuota).", "danger"); return;
-      }
     }
-    if (date > today) {
-      showToast("Registra el movimiento cuando realmente ocurra", "danger");
+    if (date > today && status === "confirmed") {
+      showToast("Para una fecha futura elige Programado. Confirma el movimiento cuando realmente ocurra.", "danger");
       return;
     }
     if (!transactionBase.periodId) {
@@ -1295,6 +1326,14 @@ export function App() {
     if (isClosedPeriod(state, transactionBase.periodId) || (transactionDraft && isClosedPeriod(state, transactionDraft.periodId))) {
       showToast("Reabre la quincena antes de cambiar sus movimientos", "danger");
       return;
+    }
+    if (!transactionDraft && method === "income" && category === "Nomina") {
+      const plannedPayroll = state.transactions.find((entry) => entry.method === "income" && entry.category === "Nomina" && entry.status === "planned" && entry.periodId === periodId);
+      if (plannedPayroll) {
+        editTransaction(plannedPayroll);
+        showToast("Esta quincena ya tiene una nómina programada. Edita ese movimiento y márcalo como realizado cuando la recibas.");
+        return;
+      }
     }
     const duplicate = state.transactions.some(
       (entry) =>
@@ -1359,6 +1398,13 @@ export function App() {
     setTransactionModalOpen(false);
   }
 
+  async function confirmPlannedTransaction(transaction: Transaction) {
+    const confirmed = await confirmAction({ title: "Confirmar movimiento realizado", message: `Se registrará hoy ${transaction.description} por ${formatMoney(transaction.amount)}. Confirma solo si el dinero ya se movió.`, confirmText: "Sí, ya se realizó" });
+    if (!confirmed) return;
+    const next = { ...transaction, status: "confirmed" as const, date: today, periodId: periodIdForDate(state, today) };
+    await commit(applyTransactionToState({ ...state, transactions: state.transactions.map((entry) => entry.id === next.id ? next : entry) }, next), "Movimiento confirmado");
+  }
+
   function openNewTransaction() {
     setTransactionDraft(null);
     setNewTransactionMethod("cash");
@@ -1397,6 +1443,12 @@ export function App() {
       showToast("Reabre la quincena antes de registrar pagos TDC", "danger");
       return;
     }
+    const plannedPayment = state.transactions.find((entry) => entry.method === "card_payment" && entry.status === "planned" && (entry.paymentForPeriodId || entry.periodId) === period.id);
+    if (plannedPayment) {
+      setView("transactions");
+      showToast("Ya hay un pago TDC programado para esta quincena. Confírmalo como realizado o edítalo desde Movimientos.");
+      return;
+    }
     const amount = Math.max(0, asNumber(period.pendingCardPayment));
     if (amount <= 0) {
       showToast("Esta quincena no tiene pago TDC pendiente", "danger");
@@ -1419,6 +1471,7 @@ export function App() {
     const transaction: Transaction = {
       id: crypto.randomUUID(),
       date: today,
+      status: "confirmed",
       description: `Pago TDC ${period.label}`,
       amount: pendingAmount,
       category: "Pago TDC",
@@ -1478,9 +1531,22 @@ export function App() {
     if (state.transactions.some((entry) => entry.sourceRecurringId === transaction.sourceRecurringId && entry.recurringDate?.slice(0, 7) === transaction.recurringDate?.slice(0, 7))) return;
     const matching = state.transactions.filter((entry) => !entry.sourceRecurringId && entry.date === transaction.date && entry.method === transaction.method && entry.amount === transaction.amount && entry.description.trim().toLowerCase() === transaction.description.trim().toLowerCase());
     if (matching.length === 1) {
-      await commit({ ...state, transactions: state.transactions.map((entry) => entry.id === matching[0].id ? { ...entry, sourceRecurringId: transaction.sourceRecurringId, recurringDate: transaction.recurringDate } : entry) }, "La suscripción se vinculó al cargo que ya registraste"); return;
+      await commit({ ...state, transactions: state.transactions.map((entry) => entry.id === matching[0].id ? { ...entry, status: "confirmed", sourceRecurringId: transaction.sourceRecurringId, recurringDate: transaction.recurringDate } : entry) }, "La suscripción se vinculó al cargo que ya registraste"); return;
     }
-    await commit(applyTransactionToState({ ...state, transactions: [...state.transactions, transaction] }, transaction), "Cargo confirmado una sola vez");
+    const confirmed: Transaction = { ...transaction, status: "confirmed" };
+    await commit(applyTransactionToState({ ...state, transactions: [...state.transactions, confirmed] }, confirmed), "Cargo confirmado una sola vez");
+  }
+
+  async function importStatement(input: BankStatement): Promise<boolean> {
+    const statement = validateStatement(input);
+    if (statement.cutoffDate > today) throw new Error("La fecha de corte debe ser hoy o una fecha anterior.");
+    const previous = state.statements?.find((entry) => entry.id === statement.id || entry.cutoffDate === statement.cutoffDate);
+    if (previous && sameStatement(previous, statement)) {
+      showToast("Este estado ya está registrado; no se agregó otra vez.");
+      return false;
+    }
+    if (previous) exportStateJson(state, today);
+    return commit({ ...state, statements: [...(state.statements || []).filter((entry) => entry.id !== statement.id && entry.cutoffDate !== statement.cutoffDate), statement] }, previous ? "Corte actualizado; respaldo anterior descargado" : "Estado BBVA guardado; pago pendiente de ejecutar");
   }
 
   function editRecurring(item: RecurringItem, index: number) {
@@ -1513,9 +1579,10 @@ export function App() {
   async function submitSettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const next = reconcileCashBalanceFor(state, asNumber(getField(form, "currentSavings")), asNumber(getField(form, "rentReserve")));
+    const next = reconcileCashBalanceFor(state, asNumber(getField(form, "currentSavings")), asNumber(getField(form, "rentReserve")), today, asNumber(getField(form, "foodReserve")));
     await commit({ ...next, settings: { ...next.settings,
       salary: asNumber(getField(form, "salary")), monthlyRent: asNumber(getField(form, "monthlyRent")),
+      monthlyFood: asNumber(getField(form, "monthlyFood")), nextPayday: getField(form, "nextPayday"),
       cutoffDay: asNumber(getField(form, "cutoffDay")), dueDay: asNumber(getField(form, "dueDay")),
       openingCardDebt: asNumber(getField(form, "openingCardDebt")),
       openingCardPaymentMonth: getField(form, "openingCardPaymentMonth") || today.slice(0, 7),
@@ -1609,7 +1676,8 @@ export function App() {
   const hasRealData =
     state.settings.currentSavings !== 0 ||
     state.transactions.length > 0 ||
-    state.recurring.length > 0;
+    state.recurring.length > 0 ||
+    Boolean(state.statements?.length);
 
   const lowSavings = periods.find((period) => period.savings < 0);
   const negativeFlows = periods.filter((period) => period.flow < 0);
@@ -1805,6 +1873,7 @@ export function App() {
             ) : null}
             {view === "periods" ? (
               <PeriodsView
+                state={state}
                 periods={periods}
                 duePeriods={duePeriods}
                 onClosePeriod={closePeriod}
@@ -1814,6 +1883,7 @@ export function App() {
             {view === "transactions" ? (
               <TransactionsView
                 state={state}
+                onConfirm={confirmPlannedTransaction}
                 onEdit={editTransaction}
                 onDelete={deleteTransaction}
                 onNew={openNewTransaction}
@@ -1832,7 +1902,8 @@ export function App() {
                 onDelete={deleteRecurring}
               />
             ) : null}
-            {view === "card" ? <CardView state={state} periods={periods} cardDebt={cardDebt} onRegisterPayment={registerCardPayment} onEdit={editTransaction} onNewInstallment={() => { setTransactionDraft(null); setNewTransactionMethod("credit"); setNewTransactionCategory("Otro"); setTransactionModalOpen(true); }} /> : null}
+            {view === "card" ? <CardView state={state} periods={periods} cardDebt={cardDebt} onOpenStatements={() => setView("statements")} onRegisterPayment={registerCardPayment} onEdit={editTransaction} onNewInstallment={() => { setTransactionDraft(null); setNewTransactionMethod("credit"); setNewTransactionCategory("Otro"); setTransactionModalOpen(true); }} /> : null}
+            {view === "statements" ? <BBVAImport state={state} onImport={importStatement} /> : null}
             {view === "reports" ? (
               <ReportsView monthly={monthly} chartData={chartData} onExportJson={() => exportStateJson(state, today)} onExportCsv={() => exportMonthlyCsv(monthly, today)} onImport={importJson} />
             ) : null}
@@ -2001,13 +2072,14 @@ function Dashboard({
     .filter((item) => item.method === "debit")
     .reduce((total, item) => total + item.amount, 0);
   const recurringCreditTotal = recurringTotal - recurringDebitTotal;
+  const essentialShortfall = Math.max(0, (Math.round(state.settings.monthlyRent * 100 / 2) + Math.round((state.settings.monthlyFood || 0) * 100 / 2) - Math.round(state.settings.salary * 100)) / 100);
   return (
     <div className="dashboard-stack grid gap-5">
       <section className="dashboard-hero" data-tour="dashboard-hero">
         <div className="dashboard-hero-main">
           <div>
             <p className="dashboard-hero-period">{activePeriod?.label || "Sin quincena activa"}</p>
-            <p className="dashboard-hero-label">Tu saldo, al día</p>
+            <p className="dashboard-hero-label">Tu ahorro libre, hoy</p>
             <strong className="dashboard-hero-balance">{formatMoney(state.settings.currentSavings)}</strong>
           </div>
           <div className="dashboard-hero-meta">
@@ -2018,6 +2090,10 @@ function Dashboard({
             <span>
               <Receipt size={17} />
               Renta apartada <strong>{formatMoney(state.settings.rentReserve)}</strong>
+            </span>
+            <span>
+              <Receipt size={17} />
+              Comida apartada <strong>{formatMoney(state.settings.foodReserve || 0)}</strong>
             </span>
           </div>
         </div>
@@ -2039,6 +2115,7 @@ function Dashboard({
 
       <section className="metric-grid grid gap-4" data-tour="dashboard-metrics">
         <MetricCard label="Renta apartada" value={formatMoney(state.settings.rentReserve)} note={`Meta mensual ${formatMoney(state.settings.monthlyRent)}`} icon={Receipt} />
+        <MetricCard label="Comida apartada" value={formatMoney(state.settings.foodReserve || 0)} note={`Meta mensual ${formatMoney(state.settings.monthlyFood || 0)}`} icon={Receipt} />
         <MetricCard label="Nomina estimada" value={formatMoney(state.settings.salary)} note="Proyeccion por quincena" icon={CircleDollarSign} />
         <MetricCard label="Proximo pago TDC" value={formatMoney(cardDebt.nextPayment)} note="Pendiente calculado" icon={CalendarClock} />
         <MetricCard
@@ -2050,6 +2127,8 @@ function Dashboard({
         <MetricCard label="Cierre proyectado" value={formatMoney(periods.at(-1)?.savings || 0)} note={periods.at(-1)?.label || "Sin proyeccion"} icon={ChartSpline} />
       </section>
 
+      {essentialShortfall > 0 ? <p className="liquidity-warning" role="status">Tu presupuesto de renta y comida supera la nómina estimada en {formatMoney(essentialShortfall)} por quincena. La proyección muestra ese faltante como presupuesto básico sin cubrir.</p> : null}
+      {hasRealData ? <LiquidityTimeline state={state} /> : null}
       {hasRealData ? <FinancialInsightsPanel insights={insights} onNavigate={onNavigate} /> : null}
 
       {!hasRealData ? (
@@ -2103,7 +2182,7 @@ function Dashboard({
             ) : null}
             {negativeFlows ? (
               <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm">
-                {negativeFlows} quincenas tienen flujo negativo por pagos de tarjeta.
+                {negativeFlows} quincenas tienen flujo negativo después de gastos, apartados y pagos.
               </div>
             ) : null}
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm">
@@ -2124,10 +2203,38 @@ function Dashboard({
             <ChevronRight size={16} />
           </button>
         </div>
-        <PeriodsTable periods={periods.slice(0, 6)} compact />
+        <PeriodsTable periods={periods.filter((period) => period.id >= (activePeriod?.id || "")).slice(0, 6)} compact />
       </section>
     </div>
   );
+}
+
+function LiquidityTimeline({ state }: { state: AppState }) {
+  const [expanded, setExpanded] = useState(false);
+  const events = useMemo(() => liquidityTimelineFor(state, today), [state]);
+  const days = events.reduce<Array<{ date: string; amount: number; balance: number; events: typeof events }>>((rows, event) => {
+    let row = rows.at(-1);
+    if (!row || row.date !== event.date) {
+      row = { date: event.date, amount: 0, balance: event.balance, events: [] };
+      rows.push(row);
+    }
+    row.amount = (Math.round(row.amount * 100) + Math.round(event.amount * 100)) / 100;
+    row.balance = event.balance;
+    row.events.push(event);
+    return rows;
+  }, []);
+  const firstShortage = days.find((day) => day.balance < 0);
+  return <section className="panel liquidity-panel" aria-labelledby="liquidity-title">
+    <div className="section-heading"><div><p className="eyebrow">Dinero disponible por fecha</p><h3 id="liquidity-title" className="text-xl font-black text-navy">Antes de cada vencimiento</h3><p className="mt-2 max-w-3xl text-sm text-slate-500">Parte de tu ahorro libre real. Cada nómina aporta solo lo que queda después de apartar renta y comida. Los ingresos posteriores a un vencimiento no cubren ese pago a tiempo.</p></div><span className="pill">Hoy · {formatMoney(state.settings.currentSavings)}</span></div>
+    {firstShortage ? <div className="liquidity-warning mt-5" role="status"><CalendarClock size={22} aria-hidden="true" /><div><strong>Faltan {formatMoney(Math.abs(firstShortage.balance))} el {firstShortage.date}</strong><p className="mt-1 text-sm">Al cubrir los movimientos de esa fecha, el ahorro libre proyectado baja de cero. Revisa el importe y la fecha de tus movimientos antes de comprometer ese dinero.</p></div></div> : null}
+    {days.length ? <ol className="liquidity-list mt-5">{(expanded ? days : days.slice(0, 8)).map((day) => <li className="liquidity-day" key={day.date}>
+      <time className="liquidity-date" dateTime={day.date}>{day.date}</time>
+      <div className="min-w-0"><details><summary className="cursor-pointer text-sm font-semibold text-navy">{day.events.length === 1 ? day.events[0].label : `${day.events.length} movimientos previstos`}</summary><div className="mt-3 grid gap-2">{day.events.map((event, index) => <p key={`${day.date}-${index}`} className="flex flex-wrap justify-between gap-2 text-xs text-slate-500"><span>{event.label} · {event.estimated ? "Estimado" : "Programado, sin ejecutar"}</span><strong className={toneClass(event.amount)}>{event.amount > 0 ? "+" : ""}{formatMoney(event.amount)}</strong></p>)}</div></details><span className={`mt-1 block text-sm ${toneClass(day.amount)}`}>{day.amount > 0 ? "+" : ""}{formatMoney(day.amount)} de ahorro libre</span></div>
+      <div className="liquidity-balance"><span className="text-xs text-slate-500">Saldo después</span><strong className={`block ${toneClass(day.balance)}`}>{formatMoney(day.balance)}</strong></div>
+    </li>)}</ol> : <p className="mt-5 text-sm text-slate-500">Agrega tu sueldo estimado, gastos o un estado de cuenta para ver los próximos movimientos por fecha.</p>}
+    {days.length > 8 ? <button className="button-ghost mt-4" type="button" onClick={() => setExpanded(!expanded)}>{expanded ? "Ver próximas fechas" : `Ver calendario completo (${days.length} fechas)`}</button> : null}
+    <p className="mt-4 text-xs text-slate-500">Esta es una proyección: confirmar un ingreso, gasto o pago actualiza el ahorro real. El paso del tiempo no confirma movimientos.</p>
+  </section>;
 }
 
 function FinancialInsightsPanel({
@@ -2211,11 +2318,12 @@ function PeriodsTable({
             <th className="table-head text-left">Quincena</th>
             <th className="table-head text-left">Rango</th>
             <th className="table-head">Ingresos</th>
-            <th className="table-head">Gastos / renta</th>
+            <th className="table-head">Gastos y apartados</th>
             {!compact ? <th className="table-head">Cargos TDC</th> : null}
             <th className="table-head">Pago TDC</th>
+            <th className="table-head">Desde apartados</th>
             <th className="table-head">Flujo</th>
-            <th className="table-head">Saldo al cierre</th>
+            <th className="table-head">Ahorro al cierre</th>
             {hasActions ? <th className="table-head" /> : null}
           </tr>
         </thead>
@@ -2231,12 +2339,14 @@ function PeriodsTable({
                     {period.salaryProjected ? "Nomina estimada" : "Nomina real"}: {formatMoney(period.salary)}
                     {period.extraIncome ? ` | Extras: ${formatMoney(period.extraIncome)}` : ""}
                     {period.rent ? ` | Renta: ${formatMoney(period.rent)}` : ""}
+                    {period.foodReserve ? ` | Comida: ${formatMoney(period.foodReserve)}` : ""}
                   </span>
                 ) : null}
               </td>
               <td className={`table-cell ${toneClass(period.cashExpenses)}`}>{formatMoney(period.cashExpenses)}</td>
               {!compact ? <td className="table-cell text-amber-700">{formatMoney(period.creditCharges)}</td> : null}
               <td className={`table-cell ${toneClass(period.cardPayment)}`}><strong>{formatMoney(period.cardPayment)}</strong><span className="income-breakdown">Real: {formatMoney(period.actualCardPayment)} · Pendiente: {formatMoney(period.pendingCardPayment)}</span></td>
+              <td className={`table-cell ${toneClass(period.reserveUsed || 0)}`}>{formatMoney(period.reserveUsed || 0)}<span className="income-breakdown">Ya reservado</span></td>
               <td className={`table-cell ${toneClass(period.flow)}`}>{formatMoney(period.flow)}</td>
               <td className="table-cell font-black text-navy">{formatMoney(period.savings)}<span className="income-breakdown">{period.closedAt ? "Cierre archivado" : "Proyectado"}</span></td>
               {hasActions ? (
@@ -2265,11 +2375,13 @@ function PeriodsTable({
 }
 
 function PeriodsView({
+  state,
   periods,
   duePeriods,
   onClosePeriod,
   onReopenPeriod,
 }: {
+  state: AppState;
   periods: CalculatedPeriod[];
   duePeriods: Period[];
   onClosePeriod: (period: Period) => void;
@@ -2280,6 +2392,7 @@ function PeriodsView({
   const duePayday = duePeriod ? paydayForPeriod(duePeriod) : null;
   return (
     <div className="grid gap-5">
+      <LiquidityTimeline state={state} />
       {duePeriod ? (
         <section className="panel border-emerald-200 bg-emerald-50/70">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -2305,7 +2418,7 @@ function PeriodsView({
             <h3 className="text-2xl font-black text-navy">Resumen por quincena</h3>
           </div>
         </div>
-        <p className="mb-3 text-sm text-slate-500">Desliza la tabla para ver todos los importes. Los saldos futuros son estimaciones, no dinero confirmado.</p>
+        <p className="mb-3 text-sm text-slate-500">El cierre es tu ahorro libre después de gastos, pagos y apartados. «Desde apartados» devuelve al cálculo el dinero que ya habías reservado, para no descontarlo otra vez. Desliza la tabla para ver los importes; las quincenas futuras dependen de que se cumplan las estimaciones.</p>
         <PeriodsTable
           periods={periods}
           duePeriodIds={duePeriodIds}
@@ -2320,11 +2433,13 @@ function PeriodsView({
 
 function TransactionsView({
   state,
+  onConfirm,
   onEdit,
   onDelete,
   onNew,
 }: {
   state: AppState;
+  onConfirm: (transaction: Transaction) => void;
   onEdit: (transaction: Transaction) => void;
   onDelete: (transaction: Transaction) => void;
   onNew: () => void;
@@ -2336,7 +2451,7 @@ function TransactionsView({
     <section className="panel" data-tour="transactions-list">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="eyebrow">Registro real</p>
+          <p className="eyebrow">Registro y movimientos programados</p>
           <h3 className="text-2xl font-black text-navy">Movimientos recientes</h3>
         </div>
         <button className="button-primary" type="button" onClick={onNew}>
@@ -2350,6 +2465,7 @@ function TransactionsView({
           {transactions.map((transaction) => {
             const periodClosed = isClosedPeriod(state, transaction.periodId);
             const automatic = Boolean(transaction.sourceRecurringId);
+            const includedInBalance = transaction.status !== "planned" && (transaction.date < (state.settings.balanceAsOf || "") || state.settings.balanceIncludedTransactionIds?.includes(transaction.id));
             const locked = periodClosed;
             const schedule = transaction.paymentSchedule?.length
               ? transaction.paymentSchedule
@@ -2360,18 +2476,22 @@ function TransactionsView({
               <article key={transaction.id} className="movement-row">
                 <div className="min-w-0">
                   <strong className="text-navy">{transaction.description}</strong>
+                  {transaction.status === "planned" ? <span className="pill ml-2">Programado · sin ejecutar</span> : null}
                   <p className="text-sm text-slate-500">
                     {transaction.date} | {transaction.category} | {getPeriodLabel(state.periods, transaction.periodId)}
                   </p>
                   <p className="text-sm text-slate-500">
                     {transaction.method === "income" && transaction.category === "Nomina"
-                      ? "Nomina recibida"
+                      ? transaction.status === "planned" ? "Nómina programada" : "Nómina recibida"
                       : transaction.method === "income"
                         ? "Ingreso extra"
                         : transactionMethodLabel(transaction.method)}
-                    {automatic ? " | Suscripción confirmada" : ""}
+                    {automatic ? transaction.status === "planned" ? " | Suscripción programada" : " | Suscripción confirmada" : ""}
                     {transaction.rentReserveAmount ? ` | Renta: ${formatMoney(transaction.rentReserveAmount)}` : ""}
+                    {transaction.foodReserveAmount ? ` | Comida: ${formatMoney(transaction.foodReserveAmount)}` : ""}
+                    {transaction.fundingSource === "rent_reserve" ? " | Origen: apartado de renta" : transaction.fundingSource === "food_reserve" ? " | Origen: apartado de comida" : ""}
                   </p>
+                  {includedInBalance ? <p className="mt-1 text-xs text-slate-500">Incluido en tu saldo conciliado. Editar este historial no cambia el ahorro medido.</p> : null}
                   {schedule ? <p className="text-xs text-slate-500">Pago TDC: {schedule}</p> : null}
                 </div>
                 <div className="flex items-center justify-between gap-2 md:justify-end">
@@ -2380,6 +2500,7 @@ function TransactionsView({
                   </span>
                   {automatic ? <span className="pill">Recurrente</span> : null}
                   {periodClosed ? <span className="pill">Historico</span> : null}
+                  {transaction.status === "planned" ? <button className="button-primary px-3 py-2" type="button" onClick={() => onConfirm(transaction)}>Confirmar realizado</button> : null}
                   <button className="button-ghost px-3 py-2" type="button" onClick={() => onEdit(transaction)} disabled={locked}>
                     Editar
                   </button>
@@ -2417,6 +2538,7 @@ function TransactionForm({
   const [category, setCategory] = useState(draft?.category || defaultCategory);
   const [shared, setShared] = useState(draft?.shared || false);
   const [term, setTerm] = useState(draft?.totalInstallments || draft?.installments || 1);
+  const [status, setStatus] = useState<Transaction["status"]>(draft?.status || "confirmed");
   const extraIncomeCategories = ["Ingreso extra", "Reembolso", "Venta", "Otro ingreso"];
   const expenseCategories = ["Comida", "Transporte", "Salud", "Servicio", "Hogar", "Mascotas", "Entretenimiento", "Otro"];
   const isPayroll = method === "income" && category === "Nomina";
@@ -2437,9 +2559,12 @@ function TransactionForm({
 
   return (
     <form className="transaction-form p-6 sm:p-8" onSubmit={onSubmit} data-tour="transactions-form">
-      <p className="eyebrow">Registro real</p>
+      <p className="eyebrow">Tu registro financiero</p>
       <h3 className="mt-2 text-2xl font-black text-navy sm:text-3xl">{draft ? "Editar movimiento" : "Registrar movimiento"}</h3>
+      {draft && draft.status !== "planned" && (draft.date < (state.settings.balanceAsOf || "") || state.settings.balanceIncludedTransactionIds?.includes(draft.id)) ? <p className="my-4 rounded-lg border border-amber-200 p-3 text-sm">Este movimiento ya está incluido en el saldo real conciliado del {state.settings.balanceAsOf}. Modificarlo corrige el historial; no vuelve a sumar o restar su importe del ahorro. Si tu saldo real cambió, concílialo en Ajustes.</p> : null}
       <input type="hidden" name="method" value={method} />
+      <Field label="Estado del movimiento"><select className="input" name="status" value={status} onChange={(event) => setStatus(event.target.value as Transaction["status"])}><option value="confirmed">Realizado: el dinero ya se movió</option><option value="planned">Programado: todavía no se realizó</option></select></Field>
+      {status === "planned" ? <p className="mb-4 text-sm text-slate-500">Solo modifica la estimación. Seguirá pendiente, incluso después de su fecha, hasta que confirmes que se realizó.</p> : null}
 
       <div className="movement-type-grid my-6" data-tour="transactions-method">
         <button className={isPayroll ? "movement-type active payroll" : "movement-type"} type="button" onClick={() => chooseKind("income", "Nomina")}>
@@ -2468,11 +2593,11 @@ function TransactionForm({
         <input className="input" name="description" required placeholder={placeholder} defaultValue={draft?.description || ""} />
       </Field>
       <div className="grid gap-3 md:grid-cols-2">
-        <Field label={method === "credit" ? "Total original de la compra" : "Monto real del movimiento"}>
+        <Field label={method === "credit" ? "Total original de la compra" : status === "planned" ? "Monto programado del movimiento" : "Monto real del movimiento"}>
           <input className="input" name="amount" type="number" step="0.01" min="0.01" required defaultValue={draft?.amount ?? ""} />
         </Field>
         <Field label="Fecha">
-          <input className="input" name="date" type="date" max={today} required defaultValue={draft?.date || today} />
+          <input className="input" name="date" type="date" max={status === "confirmed" ? today : undefined} required defaultValue={draft?.date || today} />
         </Field>
       </div>
 
@@ -2498,6 +2623,8 @@ function TransactionForm({
             <span>Renta que se aparta</span>
             <strong>{formatMoney(payrollRentReserve(state, asNumber(draft?.rentReserveAmount)))}</strong>
           </div>
+          <div><span>Comida que se aparta</span><strong>{formatMoney(asNumber(state.settings.monthlyFood) / 2)}</strong></div>
+          <div><span>Incremento libre estimado</span><strong>{formatMoney(state.settings.salary - payrollRentReserve(state) - asNumber(state.settings.monthlyFood) / 2)}</strong></div>
         </div>
       ) : null}
 
@@ -2507,6 +2634,7 @@ function TransactionForm({
             <Field label="Plazo total en meses (1 = una exhibición)"><input className="input" name="totalInstallments" type="number" min="1" max="120" step="1" value={term} onChange={(event) => setTerm(Number(event.target.value))} required /></Field>
             <Field label="Cuotas ya pagadas antes de este registro"><input className="input" name="currentInstallment" type="number" min="0" max={term} step="1" defaultValue={draft?.currentInstallment || 0} required /></Field>
             {term > 1 ? <Field label="Mensualidad fija del banco"><input className="input" name="monthlyAmount" type="number" step="0.01" min="0.01" required defaultValue={draft?.monthlyAmount ?? ""} /></Field> : null}
+            {term > 1 ? <Field label="Saldo exacto de cuotas pendientes (opcional)"><input className="input" name="remainingPrincipalAmount" type="number" step="0.01" min="0" defaultValue={draft?.remainingPrincipalAmount ?? ""} /></Field> : null}
             <Field label="Mes del próximo pago"><input className="input" name="nextPaymentMonth" type="month" required={term > 1} defaultValue={draft?.nextPaymentMonth || ""} /></Field>
           </div>
           <p className="mb-4 text-sm text-slate-500">Para una compra que ya estás pagando, captura su total original y cuántas cuotas pagaste. Solo se agregará lo pendiente. El mes indicado corresponde al pago, según tu estado de cuenta.</p>
@@ -2518,6 +2646,7 @@ function TransactionForm({
       </div> : null}
       {method === "card_payment" ? <Field label="Aplicar al pago de (opcional)"><select className="input" name="paymentForPeriodId" defaultValue={draft?.paymentForPeriodId || ""}><option value="">Primero el más antiguo pendiente</option>{calculatePeriodsFor(state).filter((period) => (period.pendingCardPayment || 0) > 0 || period.id === draft?.paymentForPeriodId).map((period) => <option key={period.id} value={period.id}>{period.label} · {formatMoney(period.pendingCardPayment)}</option>)}</select></Field> : null}
 
+      {method === "cash" || method === "card_payment" ? <><Field label="De dónde sale el dinero"><select className="input" name="fundingSource" defaultValue={draft?.fundingSource || "savings"}><option value="savings">Ahorro libre</option><option value="food_reserve">Apartado de comida</option><option value="rent_reserve">Apartado de renta</option></select></Field><p className="mb-4 text-sm text-slate-500">Si ya apartaste dinero para este gasto, usa su apartado para no restarlo dos veces del ahorro. Si el apartado no alcanza, la diferencia saldrá del ahorro libre.</p></> : null}
       <div className="mt-6 grid gap-2 sm:grid-cols-2">
         <button className="button-primary w-full" type="submit">
           {draft ? <Check size={18} /> : <Plus size={18} />}
@@ -2732,8 +2861,9 @@ function ReportsView({
             <tr>
               <th className="table-head text-left">Mes</th>
               <th className="table-head">Ingresos</th>
-              <th className="table-head">Gastos efectivo</th>
+              <th className="table-head">Gastos y apartados</th>
               <th className="table-head">Pago TDC</th>
+              <th className="table-head">Desde apartados</th>
               <th className="table-head">Flujo</th>
               <th className="table-head">Ahorro cierre</th>
             </tr>
@@ -2745,6 +2875,7 @@ function ReportsView({
                 <td className="table-cell">{formatMoney(row.income)}</td>
                 <td className={`table-cell ${toneClass(row.cashExpenses)}`}>{formatMoney(row.cashExpenses)}</td>
                 <td className={`table-cell ${toneClass(row.cardPayment)}`}>{formatMoney(row.cardPayment)}</td>
+                <td className={`table-cell ${toneClass(row.reserveUsed || 0)}`}>{formatMoney(row.reserveUsed || 0)}</td>
                 <td className={`table-cell ${toneClass(row.flow)}`}>{formatMoney(row.flow)}</td>
                 <td className="table-cell font-black text-navy">{formatMoney(row.savings)}</td>
               </tr>
@@ -2752,6 +2883,7 @@ function ReportsView({
           </tbody>
         </table>
       </div>
+      <p className="mt-4 text-xs text-slate-500">El flujo suma ingresos y dinero utilizado desde apartados, y resta gastos, nuevos apartados y pagos TDC. Así, consumir dinero reservado no lo descuenta dos veces del ahorro libre.</p>
     </section>
   );
 }
@@ -2809,17 +2941,22 @@ function SettingsView({
           </button>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <Field label="Ahorro actual"><input className="input" name="currentSavings" type="number" step="0.01" defaultValue={settings.currentSavings} /></Field>
+          <Field label="Ahorro libre real de hoy"><input className="input" name="currentSavings" type="number" step="0.01" defaultValue={settings.currentSavings} /></Field>
           <Field label="Nomina estimada por quincena"><input className="input" name="salary" type="number" step="0.01" min="0" defaultValue={settings.salary} /></Field>
+          <Field label="Primera nómina prevista del plan"><input className="input" name="nextPayday" type="date" required defaultValue={settings.nextPayday || today} /></Field>
           <Field label="Renta apartada fuera del ahorro"><input className="input" name="rentReserve" type="number" step="0.01" defaultValue={settings.rentReserve} /></Field>
           <Field label="Renta mensual"><input className="input" name="monthlyRent" type="number" step="0.01" defaultValue={settings.monthlyRent} /></Field>
+          <Field label="Presupuesto mensual de comida"><input className="input" name="monthlyFood" type="number" step="0.01" min="0" defaultValue={settings.monthlyFood || 0} /></Field>
+          <Field label="Comida apartada fuera del ahorro"><input className="input" name="foodReserve" type="number" step="0.01" min="0" defaultValue={settings.foodReserve || 0} /></Field>
           <Field label="Dia de corte TDC"><input className="input" name="cutoffDay" type="number" min="1" max="31" defaultValue={settings.cutoffDay} /></Field>
           <Field label="Dia limite pago TDC"><input className="input" name="dueDay" type="number" min="1" max="31" defaultValue={settings.dueDay} /></Field>
         </div>
+        <p className="mt-4 text-sm text-slate-500">El ahorro libre ya incluye las nóminas cobradas y los gastos anteriores. Guardar concilia ese saldo a hoy; el cierre proyectado añade solo el sobrante de ingresos futuros, después de renta, comida y obligaciones. Renta y comida se reservan a la mitad del presupuesto mensual por nómina.</p>
+        <p className="mt-2 text-sm text-slate-500">Última conciliación: {settings.balanceAsOf || "Sin fecha"}. Los movimientos anteriores o ya incluidos se conservan como historial: editarlos no cambia el saldo que mediste. Revisa que «Ahorro libre real de hoy» sea exactamente el dinero disponible fuera de tus apartados antes de guardar.</p>
         <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50/50 p-4">
           <p className="eyebrow">Base de tarjeta</p>
           <p className="mt-2 text-sm text-slate-500">
-            Captura solo la deuda anterior que no vas a desglosar en compras. Los MSI que registres se suman automáticamente: no los incluyas también aquí. Para empezar desde cero, deja este campo en cero y agrega cada compra.
+            {state.statements?.length ? "El último estado BBVA determina tu deuda al corte. La deuda inicial de esta sección queda sustituida por ese estado para evitar duplicaciones." : "Captura solo la deuda anterior que no vas a desglosar en compras. Los MSI que registres se suman automáticamente: no los incluyas también aquí. Para empezar desde cero, deja este campo en cero y agrega cada compra."}
           </p>
           <div className="mt-4 max-w-md">
             <Field label="Deuda inicial sin compras registradas"><input className="input" name="openingCardDebt" type="number" step="0.01" min="0" defaultValue={settings.openingCardDebt || 0} /></Field>
@@ -3291,6 +3428,7 @@ function QuickActionsModal({
         <div className="mt-6 grid gap-3 md:grid-cols-2">
           <ActionTile title="Nuevo movimiento" text="Agregar nomina, ingreso, gasto o compra TDC." onClick={onNewTransaction} />
           <ActionTile title="Revisar quincenas" text="Ver ingresos, gastos y pagos agrupados por fecha." onClick={() => onView("periods")} />
+          <ActionTile title="Importar estado BBVA" text="Revisar el resumen del corte y sus mensualidades." onClick={() => onView("statements")} />
           <ActionTile title="Sync y ajustes" text="Configurar respaldo cifrado y supuestos." onClick={() => onView("settings")} />
           <ActionTile title="Tour guiado" text="La app te lleva paso a paso por cada pantalla." onClick={onStartTour} />
           <ActionTile title="Manual de uso" text="Ver pasos guiados y que modifica cada pantalla." onClick={() => onView("guide")} />
