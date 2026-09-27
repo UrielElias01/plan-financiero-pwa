@@ -1606,11 +1606,9 @@ export function App() {
     try {
       const imported = await readJsonFile(file);
       const next = normalizeState(imported as Partial<AppState>);
-      if (state.transactions.length || state.recurring.length || state.settings.currentSavings) {
-        const confirmed = await confirmAction({ title: "Importar respaldo", message: "El archivo reemplazará el plan de este dispositivo. Primero se descargará una copia de tu plan actual.", confirmText: "Respaldar e importar" });
-        if (!confirmed) return;
-        exportStateJson(state, today);
-      }
+      const confirmed = await confirmAction({ title: "Importar respaldo", message: "El archivo reemplazará el plan de este dispositivo. Primero se descargará una copia de tu plan actual.", confirmText: "Respaldar e importar" });
+      if (!confirmed) return;
+      exportStateJson(state, today);
       await commit(next, "Respaldo importado");
     } catch (error) { setSaveError(`No se importó el archivo: ${(error as Error).message}`); }
     finally { if (fileInputRef.current) fileInputRef.current.value = ""; }
