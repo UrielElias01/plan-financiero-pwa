@@ -52,6 +52,7 @@ export function App() {
   const [pwaStatus, setPwaStatus] = useState<PwaUpdateStatus>("checking");
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const reloadingRef = useRef(false);
+  const [sharedMandado, setSharedMandado] = useState<unknown>(null);
 
   useEffect(() => {
     loadState().then(setState).catch((error: Error) => setLoadError(error.message || "No se pudo leer el registro local.")).finally(() => setReady(true));
@@ -76,6 +77,24 @@ export function App() {
   }, []);
 
   useEffect(() => { window.scrollTo({ top: 0 }); }, [view]);
+
+  // A file shared from Mandado (Android "Compartir → Finanzas") arrives through the service worker.
+  useEffect(() => {
+    const shared = new URLSearchParams(window.location.search).get("compartido");
+    if (!shared) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    if (shared !== "mandado") { showToast("No se pudo recibir el archivo compartido.", "danger"); return; }
+    const key = new URL("compartido/mandado.json", window.location.href).href;
+    caches.open("plan-financiero-compartido")
+      .then(async (cache) => {
+        const response = await cache.match(key);
+        await cache.delete(key);
+        if (!response) throw new Error("missing");
+        setSharedMandado(JSON.parse(await response.text()));
+        setView("mandado");
+      })
+      .catch(() => showToast("No se pudo leer el archivo de Mandado. Ábrelo desde Más → Compras de Mandado.", "danger"));
+  }, []);
 
   function showToast(message: string, tone?: Toast["tone"]) {
     const id = Date.now() + Math.random();
@@ -267,7 +286,7 @@ export function App() {
       {view === "subscriptions" ? <Subscriptions state={state} today={today} onSave={saveRecurring} onDelete={(item) => void deleteRecurring(item)} onConfirm={confirmRecurring} /> : null}
       {view === "budgets" ? <Budgets key={state.updatedAt} state={state} today={today} onSave={saveBudgets} /> : null}
       {view === "statements" ? <BBVAImport state={state} today={today} onImport={importStatement} /> : null}
-      {view === "mandado" ? <MandadoImport state={state} onImport={importMandado} /> : null}
+      {view === "mandado" ? <MandadoImport key={sharedMandado ? "shared" : "manual"} state={state} initialRaw={sharedMandado} onImport={async (candidates) => { const saved = await importMandado(candidates); if (saved) setSharedMandado(null); return saved; }} /> : null}
       {view === "settings" ? <Settings key={state.updatedAt} state={state} today={today} onReconcile={reconcile} onSaveSettings={saveSettings} onPayRent={() => void payRent()} onReset={() => void resetPlan()} /> : null}
       {view === "backup" ? <Backup state={state} pwaStatus={pwaStatus} canInstall={Boolean(installPrompt)} onExportJson={() => { exportStateJson(state, today); showToast("Respaldo descargado"); }} onExportCsv={() => exportMovementsCsv(state.transactions, today)} onImportJson={(file) => void importJson(file)} onSync={(action, sync, passphrase, confirmation) => void runSync(action, sync, passphrase, confirmation)} onCheckUpdate={() => void checkUpdate()} onApplyUpdate={() => void applyUpdate()} onInstall={() => void install()} /> : null}
     </main>

@@ -5,9 +5,9 @@ import type { ImportCandidate } from "../lib/imports";
 import type { AppState } from "../lib/types";
 import { Segmented, formatMoney, shortDate } from "../ui";
 
-export function MandadoImport({ state, onImport }: { state: AppState; onImport: (candidates: ImportCandidate[]) => Promise<boolean> }) {
+export function MandadoImport({ state, initialRaw = null, onImport }: { state: AppState; initialRaw?: unknown; onImport: (candidates: ImportCandidate[]) => Promise<boolean> }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [raw, setRaw] = useState<unknown>(null);
+  const [raw, setRaw] = useState<unknown>(initialRaw);
   const [method, setMethod] = useState<"credit" | "cash">("credit");
   const [error, setError] = useState("");
   let candidates: ImportCandidate[] = [];
@@ -22,7 +22,7 @@ export function MandadoImport({ state, onImport }: { state: AppState; onImport: 
   return <>
     <section className="card stack">
       <p className="small">Aquí entra lo que <b>realmente</b> gastaste en el súper según tus tickets de la app Mandado. Cada compra cuenta contra tu presupuesto «Mandado» y, si fue con tarjeta, contra tu siguiente pago.</p>
-      <p className="tiny muted">Esta app ya está lista para recibirlas; falta agregar en Mandado la opción para exportarlas (archivo .json). Cuando exista, abre ese archivo aquí. Puedes importar el mismo archivo varias veces: lo que ya estaba no se duplica, tampoco si ya venía en tu estado de cuenta.</p>
+      <p className="tiny muted">En Mandado toca «Enviar a Finanzas» y elige <b>Finanzas</b> en el menú Compartir: llegas aquí con tus compras listas (requiere esta app instalada desde Chrome). También puedes guardar el archivo .json y abrirlo con el botón. Importar el mismo archivo otra vez no duplica nada, tampoco lo que ya venía en tu estado de cuenta.</p>
       <button className="btn primary" type="button" onClick={() => fileRef.current?.click()}><Upload size={16} />Abrir archivo de Mandado</button>
       <input ref={fileRef} hidden type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void read(file); event.target.value = ""; }} />
       {error || parseError ? <p className="notice bad">{error || parseError}</p> : null}

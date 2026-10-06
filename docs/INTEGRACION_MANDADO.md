@@ -4,8 +4,12 @@ Mandado registra lo que realmente se pagó en el súper (tickets). El plan finan
 
 ## Estado
 
-- **Plan financiero:** listo. *Más → Compras de la app Mandado* abre el archivo, muestra cuántas compras son nuevas y cuántas ya estaban, y las agrega como movimientos de la categoría «Mandado».
-- **Mandado:** falta la opción para exportar. Debe generar el archivo descrito aquí y compartirlo (por ejemplo, con el menú Compartir de Android).
+- **Plan financiero:** listo de dos formas:
+  1. **Compartir (Android):** el manifiesto declara un `share_target`. Con la PWA instalada desde Chrome, «Finanzas» aparece en el menú Compartir. El service worker recibe el archivo (`POST ./compartir-mandado`, campo `archivo`), lo guarda en la caché local `plan-financiero-compartido` y abre `./?compartido=mandado`; la app lo lee, lo borra de la caché y muestra la pantalla de importación con la vista previa. El archivo nunca sale del teléfono.
+  2. **Archivo:** *Más → Compras de la app Mandado → Abrir archivo de Mandado*.
+- **Mandado:** falta el botón «Enviar a Finanzas» que genere este archivo y lo comparta con `@capacitor/share`.
+
+Compartir requiere que la PWA esté instalada como app (Chrome → «Instalar app»), no como acceso directo. Si «Finanzas» no aparece en Compartir, reinstálala después de actualizar a la versión con `share_target`.
 
 ## Archivo (`.json`)
 
