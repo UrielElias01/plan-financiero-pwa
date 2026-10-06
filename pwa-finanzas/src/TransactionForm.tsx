@@ -44,6 +44,7 @@ export function TransactionForm({ state, today, draft, prefill, onSave, onDelete
   const [shared, setShared] = useState(Boolean(draft?.shared));
   const [userAmount, setUserAmount] = useState(draft?.userAmount !== undefined ? String(draft.userAmount) : "");
   const [fundingSource, setFundingSource] = useState<NonNullable<Transaction["fundingSource"]>>(draft?.fundingSource || "savings");
+  const [budgetMonth, setBudgetMonth] = useState(draft?.budgetMonth || "");
   const [error, setError] = useState("");
   const statementOutlook = useMemo(() => kind === "payment" ? cardOutlookFor(state, today, 1)[0] : undefined, [kind, state, today]);
   const future = date > today;
@@ -95,6 +96,7 @@ export function TransactionForm({ state, today, draft, prefill, onSave, onDelete
       nextPaymentMonth: installments ? nextMonth || defaultNextMonth : undefined,
       paymentForPeriodId: txMethod === "card_payment" ? draft?.paymentForPeriodId : undefined,
       sourceRecurringId: draft?.sourceRecurringId, recurringDate: draft?.recurringDate, externalId: draft?.externalId, source: draft?.source,
+      budgetMonth: kind === "expense" && budgetMonth && budgetMonth !== date.slice(0, 7) ? budgetMonth : undefined,
       skipPlanImpact: false,
       affectsSavings: draft?.method === txMethod && typeof draft.affectsSavings === "boolean" ? draft.affectsSavings : txMethod !== "credit",
       rentReserveAmount, foodReserveAmount,
@@ -140,7 +142,7 @@ export function TransactionForm({ state, today, draft, prefill, onSave, onDelete
       {(state.settings.foodReserve || 0) > 0 || fundingSource === "food_reserve" ? <option value="food_reserve">Comida apartada ({formatMoney(state.settings.foodReserve || 0)})</option> : null}
     </select></Field> : null}
 
-    <details open={onInstallments || shared || planned}>
+    <details open={onInstallments || shared || planned || Boolean(draft?.budgetMonth)}>
       <summary className="disclosure">Más opciones</summary>
       <div className="stack" style={{ marginTop: "0.75rem" }}>
         {kind === "expense" && method === "credit" ? <label className="check"><input type="checkbox" checked={onInstallments} onChange={(event) => setOnInstallments(event.target.checked)} /><span>Es a meses sin intereses</span></label> : null}
@@ -152,6 +154,7 @@ export function TransactionForm({ state, today, draft, prefill, onSave, onDelete
           <Field label="Saldo pendiente exacto" hint="Opcional, como aparece en el banco"><input className="input" type="number" min="0" step="0.01" value={remaining} onChange={(event) => setRemaining(event.target.value)} /></Field>
         </div> : null}
         {kind === "expense" ? <label className="check"><input type="checkbox" checked={shared} onChange={(event) => setShared(event.target.checked)} /><span>Lo comparto con alguien (solo cuenta mi parte como gasto)</span></label> : null}
+        {kind === "expense" ? <Field label="Cuenta para el presupuesto de" hint="Por ejemplo, el mandado que compraste antes del corte para el mes siguiente. La fecha real no cambia."><input className="input" type="month" value={budgetMonth || date.slice(0, 7)} onChange={(event) => setBudgetMonth(event.target.value)} /></Field> : null}
         {kind === "expense" && shared ? <Field label="Mi parte" hint="La tarjeta conserva el cargo completo; registra el reembolso como ingreso cuando te lo den."><input className="input" type="number" min="0" step="0.01" value={userAmount} onChange={(event) => setUserAmount(event.target.value)} /></Field> : null}
         {!future ? <label className="check"><input type="checkbox" checked={planned} onChange={(event) => setPlanned(event.target.checked)} /><span>Todavía no sucede (programado). No cuenta como real hasta que lo confirmes.</span></label> : null}
       </div>

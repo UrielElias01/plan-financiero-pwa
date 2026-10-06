@@ -112,10 +112,27 @@ function previousDay(date: string): string {
   const [year, month, day] = date.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10);
 }
+/**
+ * The date a purchase counts at for budgets and monthly spending. Normally its own date; with
+ * `budgetMonth` (e.g. groceries bought before the cut-off for next month) it is the first day of
+ * that month's card cycle, the day after its cut-off. Debt and cash always use the real date.
+ */
+export function budgetDateFor(state: AppState, transaction: Pick<Transaction, "date" | "budgetMonth">): string {
+  const month = transaction.budgetMonth;
+  if (!validMonth(month) || month === transaction.date.slice(0, 7)) return transaction.date;
+  const cut = dateForDay(month, state.settings.cutoffDay);
+  const [year, number, day] = cut.split("-").map(Number);
+  const next = new Date(Date.UTC(year, number - 1, day + 1)).toISOString().slice(0, 10);
+  return next.slice(0, 7) === month ? next : `${month}-01`;
+}
 /** Spending already recorded against a budget, by any payment method, in (start, end]. */
 export function budgetSpentFor(state: AppState, category: string, start: string, end: string): number {
   const key = budgetKey(category);
-  return pesos(uniqueTransactions(state).filter((transaction) => (transaction.method === "credit" || transaction.method === "cash") && budgetKey(transaction.category) === key && transaction.date > start && transaction.date <= end).reduce((total, transaction) => total + toCents(transactionUserAmount(transaction)), 0));
+  return pesos(uniqueTransactions(state).filter((transaction) => {
+    if ((transaction.method !== "credit" && transaction.method !== "cash") || budgetKey(transaction.category) !== key) return false;
+    const date = budgetDateFor(state, transaction);
+    return date > start && date <= end;
+  }).reduce((total, transaction) => total + toCents(transactionUserAmount(transaction)), 0));
 }
 /** Card cycles (previous cut-off, cut-off] whose cut-off is today or later, within the income horizon. */
 export function cardCyclesFor(state: AppState, asOf = defaultToday): Array<{ start: string; end: string }> {

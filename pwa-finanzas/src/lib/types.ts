@@ -113,6 +113,8 @@ export type Transaction = {
   /** Stable identity of an imported row (statement movement or Mandado ticket) to avoid importing it twice. */
   externalId?: string;
   source?: "manual" | "statement" | "mandado";
+  /** "AAAA-MM" whose budget this spending counts against, when it differs from the purchase month. */
+  budgetMonth?: string;
 };
 
 export type CardCalendarEntry = {

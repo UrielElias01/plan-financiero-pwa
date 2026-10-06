@@ -44,6 +44,8 @@ Guardar el saldo de hoy (conciliar) es una acción separada de guardar sueldo, r
 
 Los presupuestos son estimaciones: no son deuda real ni cambian el saldo comprobado.
 
+Un gasto puede contar para el presupuesto de otro mes (`budgetMonth`, «Cuenta para el presupuesto de»), por ejemplo el mandado comprado antes del corte para el mes siguiente. Para presupuestos y para el resumen mensual se toma como si ocurriera el día siguiente al corte de ese mes; la deuda, el estado de cuenta y el dinero siguen usando su fecha real, así que no se vuelve deuda nueva ni se cuenta dos veces.
+
 Una salida con `fundingSource: "rent_reserve"` o `"food_reserve"` usa primero el apartado elegido y descuenta del ahorro libre únicamente lo que falte. `"savings"` usa el ahorro. Un pago de tarjeta puede salir de un apartado cuando los gastos que cubre ya tenían ese dinero reservado. La salida y la reserva son dos etapas del mismo dinero; no se deben capturar dos pagos por la misma operación.
 
 El registro utiliza fechas sin horas. Dentro del mismo día se procesan primero los ingresos y después las salidas, de modo que los apartados de la nómina de ese día puedan cubrir sus pagos. Este orden es una convención diaria; no demuestra a qué hora estuvo disponible el dinero en el banco.

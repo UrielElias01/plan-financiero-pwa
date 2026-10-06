@@ -1,5 +1,5 @@
 import {
-  cardPaymentObligationsFor, dateForDay, isConfirmedTransaction, latestStatementFor, liquidityTimelineFor, monthAfter, monthLabel,
+  budgetDateFor, cardPaymentObligationsFor, dateForDay, isConfirmedTransaction, latestStatementFor, liquidityTimelineFor, monthAfter, monthLabel,
   normalizeCategory, paydayForPeriod, recurringOccurrencesFor, toCents, transactionUserAmount,
 } from "./calculations";
 import { today as defaultToday } from "./seed";
@@ -150,8 +150,9 @@ export type MonthSummary = {
 };
 
 function isPayrollCategory(category: string): boolean { return normalizeCategory(category) === "nomina"; }
+/** Spending of a month by the month it counts for (`budgetMonth`), so the summary matches the budgets. */
 function spendingTransactions(state: AppState, month: string, asOf: string): Transaction[] {
-  return state.transactions.filter((transaction) => transaction.date.slice(0, 7) === month && isConfirmedTransaction(transaction, asOf) && (transaction.method === "credit" || (transaction.method === "cash" && transaction.affectsSavings !== false)));
+  return state.transactions.filter((transaction) => budgetDateFor(state, transaction).slice(0, 7) === month && isConfirmedTransaction(transaction, asOf) && (transaction.method === "credit" || (transaction.method === "cash" && transaction.affectsSavings !== false)));
 }
 
 /** What came in and what went out in a calendar month, by category and against each budget. */

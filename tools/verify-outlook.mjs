@@ -66,6 +66,19 @@ test("presupuestos: lo registrado consume el presupuesto; tarjeta por corte y d�
   assert.equal(projectedBudgetTransactions(more, AS_OF).find((item) => item.date === "2032-04-03").amount, 380);
 });
 
+test("un mandado comprado antes del corte puede contar para el presupuesto del mes siguiente sin volverse deuda nueva", () => {
+  const budgets = [{ id: "m", category: "Mandado", monthlyAmount: 600, method: "credit" }];
+  const groceries = tx({ id: "early", date: "2032-02-28", periodId: "2032-02-h2", category: "Mandado", amount: 400 });
+  const asOwnMonth = plan({ budgets, transactions: [groceries] });
+  const forNextMonth = plan({ budgets, transactions: [{ ...groceries, budgetMonth: "2032-03" }] });
+  const april = (input) => projectedBudgetTransactions(input, AS_OF).find((item) => item.date === "2032-04-03").amount;
+  assert.equal(april(asOwnMonth), 600);
+  assert.equal(april(forNextMonth), 200);
+  assert.equal(forNextMonth.settings.usedCreditBalance, asOwnMonth.settings.usedCreditBalance, "already inside the statement: no new debt");
+  assert.equal(monthSummaryFor(forNextMonth, "2032-02", AS_OF).spending.total, 0);
+  assert.equal(monthSummaryFor(forNextMonth, "2032-03", AS_OF).spending.byCategory.find((item) => item.category === "Mandado").spent, 400);
+});
+
 test("una nómina vencida sin registrar sigue en la proyección y se pide confirmarla", () => {
   const asOf = "2032-03-17";
   const pending = plan({ asOf });

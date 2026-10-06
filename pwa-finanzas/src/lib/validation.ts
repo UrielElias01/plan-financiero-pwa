@@ -188,6 +188,7 @@ export function validateBackup(input: unknown): Partial<AppState> {
     optional(row, "sourceRecurringId", path, text);
     optional(row, "recurringDate", path, date);
     optional(row, "externalId", path, text);
+    optional(row, "budgetMonth", path, month);
     optional(row, "source", path, (value, location) => {
       if (!["manual", "statement", "mandado"].includes(value as string)) invalid(location, "no es un origen reconocido");
     });

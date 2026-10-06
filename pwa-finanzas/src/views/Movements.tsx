@@ -25,12 +25,13 @@ export function Movements({ state, today, onEdit, onConfirmPlanned }: {
   const [search, setSearch] = useState("");
   const summary = useMemo(() => monthSummaryFor(state, month, today), [state, month, today]);
   const query = search.trim().toLocaleLowerCase("es-MX");
+  // A purchase that counts for another month's budget shows in both months, with a note.
   const rows = state.transactions
-    .filter((transaction) => transaction.date.slice(0, 7) === month && matches(transaction, filter))
+    .filter((transaction) => (transaction.date.slice(0, 7) === month || transaction.budgetMonth === month) && matches(transaction, filter))
     .filter((transaction) => !category || ((transaction.method === "credit" || transaction.method === "cash") && normalizeCategory(transaction.category).replace(/^comida$/, "mandado") === normalizeCategory(category).replace(/^comida$/, "mandado")))
     .filter((transaction) => !query || `${transaction.description} ${transaction.category}`.toLocaleLowerCase("es-MX").includes(query))
     .sort((a, b) => b.date.localeCompare(a.date) || a.description.localeCompare(b.description));
-  const days = [...new Set(rows.map((row) => row.date))];
+  const days = [...new Set(rows.map((row) => row.date))].sort((a, b) => b.localeCompare(a));
   const maxSpent = Math.max(1, ...summary.spending.byCategory.map((item) => Math.max(item.spent, item.budget)));
   return <>
     <div className="row between">
@@ -74,7 +75,7 @@ export function Movements({ state, today, onEdit, onConfirmPlanned }: {
             <CategoryIcon transaction={transaction} />
             <button type="button" className="grow" style={{ border: 0, background: "none", padding: 0, textAlign: "left", minWidth: 0 }} onClick={() => onEdit(transaction)}>
               <p className="title">{transaction.description}</p>
-              <p className="meta">{transaction.method === "credit" || transaction.method === "cash" ? `${transaction.category} · ` : ""}{methodLabel(transaction)}{(transaction.totalInstallments || 1) > 1 ? ` · ${transaction.totalInstallments} meses` : ""}{transaction.source === "statement" ? " · del estado de cuenta" : transaction.source === "mandado" ? " · de Mandado" : ""}{transaction.shared ? ` · tu parte ${formatMoney(transaction.userAmount || 0)}` : ""}</p>
+              <p className="meta">{transaction.method === "credit" || transaction.method === "cash" ? `${transaction.category} · ` : ""}{methodLabel(transaction)}{(transaction.totalInstallments || 1) > 1 ? ` · ${transaction.totalInstallments} meses` : ""}{transaction.source === "statement" ? " · del estado de cuenta" : transaction.source === "mandado" ? " · de Mandado" : ""}{transaction.shared ? ` · tu parte ${formatMoney(transaction.userAmount || 0)}` : ""}{transaction.budgetMonth && transaction.budgetMonth !== transaction.date.slice(0, 7) ? (transaction.budgetMonth === month ? ` · comprado el ${dayDate(transaction.date)}` : ` · cuenta para ${monthLabel(transaction.budgetMonth).toLowerCase()}`) : ""}</p>
             </button>
             <div style={{ textAlign: "right" }}>
               <Money value={transaction.method === "card_payment" ? -transaction.amount : sign * transaction.amount} signed={transaction.method === "income"} className="amount" />
