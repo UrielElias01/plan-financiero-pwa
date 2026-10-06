@@ -1,38 +1,24 @@
 # Plan Financiero PWA
 
-PWA offline-first para administrar un plan financiero quincenal. El frontend esta migrado a React + Vite + TypeScript + Tailwind, con iconos de lucide-react, graficas de Recharts, IndexedDB local y sincronizacion cifrada opcional con Cloudflare Worker/KV.
+PWA offline-first para administrar un plan financiero quincenal. El frontend esta migrado a React + Vite + TypeScript + Tailwind, con iconos de lucide-react, IndexedDB local y sincronizacion cifrada opcional con Cloudflare Worker/KV.
 
 ## Funcionalidad
 
-- Plan vacío con doce meses iniciales y una interfaz oscura adaptable.
-- Movimientos reales con alta, edición y eliminación; saldos recalculados en centavos.
-- Sueldo estimado quincenal sustituido por la nómina real.
-- Saldo comprobado a una fecha y próxima nómina pendiente para evitar reutilizar ingresos ya gastados.
-- Apartados de renta y comida y selección del origen de cada salida de dinero.
-- Movimientos planeados con confirmación explícita, sin activarlos al llegar su fecha.
-- Suscripciones proyectadas con confirmación explícita de cargos.
-- MSI de hasta 120 meses: mensualidad, cuotas pagadas antes del registro y próximo pago.
-- Calendario por mes y año con cuota, pagos aplicados y deuda restante.
-- Pagos TDC parciales, asignación por quincena y saldo a favor.
-- Reparto personal explícito; el pago bancario conserva el cargo completo.
-- Reportes que separan flujo real y estimaciones.
-- Proyección por fecha para detectar falta de ahorro disponible antes de cada vencimiento.
-- Manual dinamico con ayuda contextual por pantalla.
-- Tours guiados por modulo con foco visual, oscurecimiento, flechas y pasos detallados.
-- Consejos financieros accionables en `Inicio`, derivados de ahorro, TDC, recurrentes y flujo.
-- Busqueda/aplicacion de actualizaciones PWA desde `Ajustes`.
-- Importación JSON validada, exportación y migración de respaldos v1/v2/v3 a v4.
-- Importación local de estados BBVA con revisión de deuda, pago requerido y detalle MSI.
-- Exportacion CSV.
-- Persistencia local en IndexedDB.
-- PWA instalable con service worker.
-- Sync cifrado opcional contra `https://plan-financiero-sync.uriel-plan-financiero.workers.dev`.
+Cuatro pestañas pensadas para el teléfono:
 
-## Manual dentro de la app
+- **Inicio**: responde «¿me alcanza para el pago de la tarjeta?». Muestra el pago del estado de cuenta, el dinero que tendrás en la fecha límite (dinero de hoy + nóminas antes del vencimiento − renta y gastos de débito) y si cubres el pago sin intereses, el mínimo + mensualidades o solo el mínimo. Después estima los siguientes pagos: lo que no se cubre pasa al siguiente con intereses aproximados. Incluye pendientes por confirmar y el resumen del mes (ingresos contra gastos por categoría y presupuesto).
+- **Movimientos**: mes por mes, gastos por categoría contra presupuesto, filtros y búsqueda. Tocar un movimiento lo edita o borra.
+- **Tarjeta**: corte actual, lo que falta pagar, deuda conocida, compras a meses con su siguiente mensualidad y pagos por mes.
+- **Más**: mi dinero y sueldo, presupuestos, suscripciones, estado de cuenta BBVA, compras de Mandado, respaldo, sincronización y actualización.
 
-La seccion `Manual` explica para que sirve cada pantalla, que campos puedes modificar y un paso a paso recomendado. Ademas, el boton `Ayuda` del encabezado abre una guia rapida contextual segun la pantalla actual.
+El botón **Registrar** captura gasto (tarjeta o débito), ingreso (nómina o extra) o pago de tarjeta; las opciones avanzadas (meses sin intereses, compartido, programado) quedan en «Más opciones».
 
-El boton `Tour` inicia una guia flotante que cambia de pantalla conforme avanzas, oscurece lo demas y resalta la seccion exacta con circulo y flecha. Desde `Manual` tambien puedes iniciar tours especificos por modulo para revisar botones, graficas, tablas y formularios sin recorrer toda la app.
+Además:
+
+- Lector de PDF del estado BBVA: resumen, pago mínimo + mensualidades, tasa, detalle de meses sin intereses y compras del periodo, con categoría sugerida y sin duplicar lo ya registrado.
+- Presupuestos mensuales por categoría (tarjeta o débito) que la proyección descuenta mientras no se gastan.
+- Importación de compras reales desde la app Mandado ([contrato](../docs/INTEGRACION_MANDADO.md)).
+- Saldos y cuotas en centavos, respaldos JSON validados, exportación de movimientos a CSV, IndexedDB, PWA sin conexión y sync cifrado opcional.
 
 ## Reglas financieras importantes
 
@@ -80,6 +66,9 @@ npm run check:engine
 npm run check:rollover
 npm run check:backups
 npm run check:sync
+npm run check:bbva
+npm run check:outlook
+npm test
 ```
 
 El build genera `dist/`, que es lo que publica GitHub Pages.

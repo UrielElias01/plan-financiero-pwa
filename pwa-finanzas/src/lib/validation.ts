@@ -126,6 +126,11 @@ export function validateBackup(input: unknown): Partial<AppState> {
   optional(settings, "openingCardPaymentMonth", "settings", month);
   for (const key of ["balanceAsOf", "nextPayday"]) optional(settings, key, "settings", date);
   optional(settings, "balanceIncludedTransactionIds", "settings", uniqueTextList);
+  if (settings.budgets !== undefined) uniqueRows(settings.budgets, "settings.budgets", (row, path) => {
+    text(row.category, `${path}.category`);
+    amount(row.monthlyAmount, `${path}.monthlyAmount`);
+    if (row.method !== "debit" && row.method !== "credit") invalid(`${path}.method`, "no es un medio de pago reconocido");
+  });
 
   uniqueRows(state.periods, "periods", (row, path) => {
     periodId(row.id, `${path}.id`);
@@ -182,6 +187,10 @@ export function validateBackup(input: unknown): Partial<AppState> {
     for (const key of ["skipPlanImpact", "affectsSavings"]) optional(row, key, path, boolean);
     optional(row, "sourceRecurringId", path, text);
     optional(row, "recurringDate", path, date);
+    optional(row, "externalId", path, text);
+    optional(row, "source", path, (value, location) => {
+      if (!["manual", "statement", "mandado"].includes(value as string)) invalid(location, "no es un origen reconocido");
+    });
     if (row.sourceRecurringId) {
       const key = JSON.stringify([row.sourceRecurringId, String(row.recurringDate || row.date).slice(0, 7)]);
       if (recurringOccurrences.has(key)) invalid(path, "duplica un cargo de suscripción en el mismo mes");

@@ -27,7 +27,22 @@ Cada movimiento distingue `status: "planned"` de `status: "confirmed"`. Lo plane
 
 El sueldo estimado es **por quincena**. Solo se proyecta en quincenas abiertas sin nómina registrada. Una nómina capturada sustituye la estimación; un ingreso extra no sustituye el sueldo.
 
-La nómina guarda sus `rentReserveAmount` y `foodReserveAmount`. Ese dinero pasa del ahorro libre a sus apartados, limitado al ingreso recibido. `monthlyRent` y `monthlyFood` definen el presupuesto mensual; la proyección aparta la mitad por quincena. Editar o eliminar una nómina utiliza los importes guardados aunque después cambie el presupuesto.
+Una fecha de pago entre `nextPayday` y hoy sin nómina registrada no desaparece de la proyección: se mantiene como «Nómina del AAAA-MM-DD sin registrar», fechada hoy, e Inicio pide confirmarla. Confirmar un movimiento planeado conserva su fecha si ya pasó, de modo que la nómina del día 15 confirmada el 16 sigue en su quincena y no elimina la estimación de la siguiente.
+
+La nómina guarda sus `rentReserveAmount` y `foodReserveAmount`. Ese dinero pasa del ahorro libre a sus apartados, limitado al ingreso recibido. `monthlyRent` define la renta mensual; la proyección aparta la mitad por quincena. `monthlyFood` se conserva por compatibilidad: los planes guardados antes de existir los presupuestos convierten ese importe en el presupuesto «Mandado» (débito) y dejan `monthlyFood` en cero, con un aviso. Editar o eliminar una nómina utiliza los importes guardados aunque después cambie el presupuesto.
+
+Guardar el saldo de hoy (conciliar) es una acción separada de guardar sueldo, renta o datos de la tarjeta: cambiar la renta ya no vuelve a fijar `balanceAsOf`, lo que antes podía borrar de la proyección una nómina todavía no registrada.
+
+### Presupuestos
+
+`settings.budgets` contiene, por categoría, un importe mensual y el medio con que se paga. El presupuesto representa gasto que todavía no ocurre; lo registrado de esa categoría (con tarjeta o débito, real o programado) lo consume, de modo que una compra y su presupuesto nunca se proyectan dos veces. «Comida» cuenta como «Mandado».
+
+| Medio | Periodo | Efecto en la proyección |
+| --- | --- | --- |
+| Tarjeta | Cada ciclo de corte (corte anterior, corte] con corte desde hoy | Lo no gastado del ciclo es una obligación estimada de su fecha límite |
+| Débito | Cada quincena abierta desde la actual | La mitad del mes menos lo gastado en la quincena sale del dinero disponible al inicio de la quincena (o hoy) |
+
+Los presupuestos son estimaciones: no son deuda real ni cambian el saldo comprobado.
 
 Una salida con `fundingSource: "rent_reserve"` o `"food_reserve"` usa primero el apartado elegido y descuenta del ahorro libre únicamente lo que falte. `"savings"` usa el ahorro. Un pago de tarjeta puede salir de un apartado cuando los gastos que cubre ya tenían ese dinero reservado. La salida y la reserva son dos etapas del mismo dinero; no se deben capturar dos pagos por la misma operación.
 
@@ -98,7 +113,9 @@ El pago para no generar intereses es una obligación del vencimiento del estado 
 
 La importación exige que la deuda total coincida con el pago para no generar intereses más el saldo MSI pendiente, y que la suma del detalle MSI coincida con ese saldo. Una diferencia sin explicar requiere revisión. Este modelo no representa automáticamente otros tipos de crédito, intereses o convenios que rompan esa conciliación. Un estado que indique deuda MSI sin detalle suficiente requiere completar las compras antes de confirmar.
 
-Se pueden abrir archivos PDF, JSON, TXT y la plantilla CSV descargable, además de capturar el estado manualmente. Los archivos se procesan localmente. Los PDF necesitan texto seleccionable; no se incluye OCR de escaneos ni conexión con el banco. La extracción de texto propone campos del resumen con etiquetas reconocidas; el detalle MSI requiere revisión o captura manual. Puede no reconocer todos los formatos de BBVA. El usuario revisa las fechas, importes, cuotas y conceptos antes de aplicar el estado. Un comercio repetido no demuestra por sí solo que sea una suscripción; los cargos recurrentes se confirman como tales. El texto completo del documento y los identificadores de cuenta no se guardan en el estado importado.
+Se pueden abrir archivos PDF, JSON, TXT y la plantilla CSV descargable, además de capturar el estado manualmente. Los archivos se procesan localmente. Los PDF necesitan texto seleccionable; no se incluye OCR de escaneos ni conexión con el banco. El lector reconoce el formato del estado BBVA de tarjeta (con notas al pie entre etiqueta e importe): periodo, corte, fecha límite, pago para no generar intereses, pago mínimo + compras diferidas (`minimumPlusInstallments`), pago mínimo, saldo a meses, saldo deudor total, límite de crédito, tasa anual, la tabla de meses sin intereses y las compras regulares del periodo. Si falta el saldo deudor total, se calcula como pago + saldo a meses y la conciliación sigue siendo obligatoria. Las compras a meses con intereses se advierten pero no se modelan. Otros formatos se leen con el método anterior de etiquetas y requieren captura manual.
+
+Las compras regulares del periodo se pueden agregar a Movimientos como historial (`source: "statement"`, `externalId` estable). Se excluyen pagos, puntos y renglones «NN DE NN» (mensualidades de compras anteriores). Como están fechadas en o antes del corte, el libro de la tarjeta no las vuelve a contar como deuda. Una compra ya registrada a mano o desde Mandado (mismo importe, a lo más dos días de diferencia) no se duplica; dos compras iguales del mismo estado sí cuentan como dos. El usuario revisa las fechas, importes, cuotas y conceptos antes de aplicar el estado. Un comercio repetido no demuestra por sí solo que sea una suscripción; los cargos recurrentes se confirman como tales. El texto completo del documento y los identificadores de cuenta no se guardan en el estado importado.
 
 ## Suscripciones
 
@@ -106,9 +123,18 @@ Las suscripciones tienen importe, medio de pago, día mensual, estado activo y f
 
 Abrir la app no confirma un cargo. El usuario confirma los cargos vencidos desde Suscripciones para incorporarlos al registro real. La identidad de suscripción y mes evita recrear el cargo al volver a confirmar o cambiar su día dentro del mismo mes.
 
-Editar, pausar o eliminar modifica las proyecciones y conserva los movimientos confirmados. Las correcciones de movimientos reales se realizan en Movimientos; las quincenas cerradas deben reabrirse primero.
+Editar, pausar o eliminar modifica las proyecciones y conserva los movimientos confirmados. Las correcciones de movimientos reales se realizan en Movimientos; las quincenas cerradas en versiones anteriores ya no bloquean la edición.
+
+## ¿Me alcanza? Proyección por fecha límite
+
+Inicio recorre la misma secuencia de eventos de la proyección, fecha límite por fecha límite. Para cada una, el dinero disponible es el de hoy (o lo que quedó después del pago anterior) más los ingresos y menos los apartados y gastos de débito hasta esa fecha. Se compara contra lo que vence: el pago del estado, mensualidades, compras registradas, suscripciones y presupuestos con tarjeta.
+
+En el pago respaldado por un estado de cuenta se comparan tres niveles: pago para no generar intereses, mínimo + mensualidades (pagar menos hace que los MSI generen intereses) y pago mínimo; los pagos reales posteriores al corte se restan de los tres. En cada fecha se supone que se paga lo posible; lo que falta pasa al siguiente vencimiento junto con un interés aproximado: faltante × tasa anual del estado × 30/360 × 1.16 (IVA). El banco calcula sobre saldos promedio diarios, por lo que el importe real puede variar. Esta vista no registra pagos ni cambia saldos.
 
 ## Tabla quincenal
+
+La interfaz ya no muestra la tabla quincenal; el motor la conserva (`calculatePeriodsFor`) para reportes y pruebas.
+
 
 Las quincenas son una vista calculada. Capturar ingresos, gastos y pagos en Movimientos y Suscripciones mantiene un solo registro de cada operación.
 
@@ -136,6 +162,6 @@ El guardado se confirma al completarse la transacción de IndexedDB. Los errores
 
 `tools/verify-finance-engine.mjs`, `tools/verify-period-rollover.mjs` y `tools/verify-backups.mjs` usan datos sintéticos: cuotas, pagos parciales y excedentes, saldos reales frente a proyecciones, cambios de quincena y año, febrero bisiesto, suscripciones editadas, migraciones y respaldos malformados. Se ejecutan con `npm run check:engine`, `npm run check:rollover` y `npm run check:backups`. No requieren importes privados. Los casos basados en datos personales se verifican fuera del repositorio y los respaldos resultantes se entregan por separado.
 
-`npm run check:bbva` ejecuta `tools/verify-bbva.mjs` y `tools/verify-statement-ledger.mjs`: validación y lectura de archivos, conciliación por corte, pagos confirmados frente a planeados, uso de apartados y compromisos fuera del horizonte. `npm test` ejecuta todas estas verificaciones y la del servicio de sincronización.
+`npm run check:bbva` ejecuta `tools/verify-bbva.mjs` y `tools/verify-statement-ledger.mjs`: validación y lectura de archivos (incluido un estado ficticio con el formato BBVA), conciliación por corte, pagos confirmados frente a planeados, uso de apartados y compromisos fuera del horizonte. `npm run check:outlook` ejecuta `tools/verify-outlook.mjs`: niveles de pago, arrastre con intereses, presupuestos, nómina pendiente, resumen mensual, migración del apartado de comida e importaciones sin duplicados. `npm test` ejecuta todas estas verificaciones y la del servicio de sincronización.
 
-El motor está en `pwa-finanzas/src/lib/calculations.ts`; su esquema en `types.ts`; validación y persistencia en `validation.ts`, `storage.ts` y `files.ts`. La interfaz está en `pwa-finanzas/src/App.tsx`.
+El motor está en `pwa-finanzas/src/lib/calculations.ts`; su esquema en `types.ts`; validación y persistencia en `validation.ts`, `storage.ts` y `files.ts`. La proyección por fecha límite y el resumen mensual están en `outlook.ts`; las importaciones de compras en `imports.ts`. La interfaz está en `pwa-finanzas/src/App.tsx` y `pwa-finanzas/src/views/`.

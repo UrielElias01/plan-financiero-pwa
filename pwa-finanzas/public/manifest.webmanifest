@@ -1,12 +1,12 @@
 {
   "name": "Plan Financiero Quincenal",
   "short_name": "Finanzas",
-  "description": "PWA para llevar quincenas, gastos, tarjeta de credito, recurrentes y reportes.",
+  "description": "Saber si te alcanza para pagar tu tarjeta y controlar tus gastos contra tu sueldo.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#eaf3fa",
-  "theme_color": "#1f4e78",
+  "background_color": "#090e18",
+  "theme_color": "#090e18",
   "orientation": "portrait",
   "icons": [
     {

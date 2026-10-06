@@ -1,6 +1,6 @@
 # Plan Financiero PWA
 
-Aplicación web progresiva para planear por quincenas y llevar ingresos, gastos, suscripciones, pagos de tarjeta y compras a meses. Interfaz oscura adaptable con panel de saldos, tablas de estimaciones y desglose de cuotas.
+Aplicación web progresiva para saber si te alcanza para pagar la tarjeta en su fecha límite y para controlar tus gastos contra tu sueldo y tus ingresos extra. Interfaz oscura pensada para el teléfono: Inicio, Movimientos, Tarjeta y Más.
 
 La app publica no debe contener datos personales. Los importes reales viven en respaldos JSON privados, IndexedDB local del navegador o en el backend cifrado si decides usar sync.
 
@@ -30,11 +30,13 @@ La app publica no debe contener datos personales. Los importes reales viven en r
 - Pagos parciales, asignación a una quincena y saldo a favor de tarjeta.
 - Reparto explícito por compra; la parte personal no reduce la deuda completa ante el banco.
 - Suscripciones proyectadas y confirmadas por el usuario, con historial protegido al editarlas.
-- Tablas y reportes que separan movimientos reales de estimaciones.
+- Respuesta directa en Inicio: si alcanza para el pago sin intereses, el mínimo + mensualidades o el mínimo, y estimación de los siguientes pagos.
+- Presupuestos por categoría y resumen mensual de ingresos contra gastos.
 - Proyección por fecha de ingresos y vencimientos para detectar faltantes antes del cierre quincenal.
 - Importación JSON validada y migración de respaldos antiguos con avisos de revisión.
 - Importación local de estados BBVA con revisión del corte, pago requerido, deuda y cuotas MSI antes de confirmar.
-- Exportación JSON/CSV, manual interno, ayuda contextual y tours.
+- Lectura del PDF BBVA con detalle MSI y compras del periodo; importación de compras de la app Mandado.
+- Exportación JSON y de movimientos a CSV.
 - Persistencia local en IndexedDB, PWA sin conexión y sync cifrado opcional.
 
 ## Modelo financiero
@@ -80,6 +82,9 @@ npm run check:engine
 npm run check:rollover
 npm run check:backups
 npm run check:sync
+npm run check:bbva
+npm run check:outlook
+npm test
 ```
 
 En Codex local usa el Node empaquetado si el Node del sistema es viejo:

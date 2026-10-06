@@ -15,17 +15,17 @@ export function formatMoney(value: unknown): string { return currency.format(asN
 export function signedTone(value: unknown): "positive" | "negative" { return asNumber(value) < 0 ? "negative" : "positive"; }
 const pad = (value: number) => String(value).padStart(2, "0");
 const validMonth = (value: unknown): value is string => typeof value === "string" && /^(19\d{2}|20\d{2}|21\d{2}|2200)-(0[1-9]|1[0-2])$/.test(value);
-function monthAfter(month: string, offset: number): string {
+export function monthAfter(month: string, offset: number): string {
   const [year, number] = month.split("-").map(Number);
   const date = new Date(Date.UTC(year, number - 1 + offset, 1));
   return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}`;
 }
-function dateForDay(month: string, day: number): string {
+export function dateForDay(month: string, day: number): string {
   const [year, number] = month.split("-").map(Number);
   return `${month}-${pad(Math.min(new Date(Date.UTC(year, number, 0)).getUTCDate(), Math.max(1, Math.trunc(day))))}`;
 }
-function monthLabel(month: string): string { return `${monthNames[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`; }
-function datePeriodId(date: string): string { return `${date.slice(0, 7)}-h${Number(date.slice(8, 10)) <= 15 ? 1 : 2}`; }
+export function monthLabel(month: string): string { return `${monthNames[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`; }
+export function datePeriodId(date: string): string { return `${date.slice(0, 7)}-h${Number(date.slice(8, 10)) <= 15 ? 1 : 2}`; }
 function periodMonth(period: Period): string { return period.id.slice(0, 7); }
 function periodStart(period: Period): string { return `${periodMonth(period)}-${period.id.endsWith("h1") ? "01" : "16"}`; }
 export function paydayForPeriod(period: Period): string | null { return validMonth(periodMonth(period)) ? dateForDay(periodMonth(period), period.id.endsWith("h1") ? 15 : 31) : null; }
@@ -105,6 +105,65 @@ function projectedRecurringTransactions(state: AppState, asOf = defaultToday): T
   }
   return transactions;
 }
+export function normalizeCategory(value: string): string { return value.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLocaleLowerCase("es-MX"); }
+/** Earlier versions called groceries "Comida"; both names count against the same budget. */
+function budgetKey(value: string): string { const key = normalizeCategory(value); return key === "comida" ? "mandado" : key; }
+function previousDay(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10);
+}
+/** Spending already recorded against a budget, by any payment method, in (start, end]. */
+export function budgetSpentFor(state: AppState, category: string, start: string, end: string): number {
+  const key = budgetKey(category);
+  return pesos(uniqueTransactions(state).filter((transaction) => (transaction.method === "credit" || transaction.method === "cash") && budgetKey(transaction.category) === key && transaction.date > start && transaction.date <= end).reduce((total, transaction) => total + toCents(transactionUserAmount(transaction)), 0));
+}
+/** Card cycles (previous cut-off, cut-off] whose cut-off is today or later, within the income horizon. */
+export function cardCyclesFor(state: AppState, asOf = defaultToday): Array<{ start: string; end: string }> {
+  const last = state.periods.filter((period) => !period.closedAt).at(-1);
+  const horizon = last ? paydayForPeriod(last) : null;
+  if (!horizon) return [];
+  const cycles: Array<{ start: string; end: string }> = [];
+  for (let offset = -1, previous = ""; offset < 240; offset += 1) {
+    const cut = dateForDay(monthAfter(asOf.slice(0, 7), offset), state.settings.cutoffDay);
+    if (previous && cut >= asOf) {
+      if (cut > horizon) break;
+      cycles.push({ start: previous, end: cut });
+    }
+    previous = cut;
+  }
+  return cycles;
+}
+/**
+ * Budgets stand in for spending that has not happened yet. Recorded spending of the same category
+ * consumes the budget, so a purchase and its budget are never projected twice.
+ */
+export function projectedBudgetTransactions(state: AppState, asOf = defaultToday): Transaction[] {
+  const budgets = (state.settings.budgets || []).filter((budget) => positiveCents(budget.monthlyAmount) > 0 && budget.category.trim());
+  if (!budgets.length) return [];
+  const currentId = datePeriodId(asOf);
+  const transactions: Transaction[] = [];
+  const base = (budget: typeof budgets[number], date: string, cents: number, method: Transaction["method"]): Transaction => ({ id: `budget:${budget.id}:${date}`, date, description: `${budget.category} · presupuesto`, amount: pesos(cents), category: budget.category, method, periodId: datePeriodId(date), shared: false, installments: 1, totalInstallments: 1, currentInstallment: 0, status: "planned", affectsSavings: method !== "credit" });
+  for (const budget of budgets) {
+    const monthly = positiveCents(budget.monthlyAmount);
+    if (budget.method === "credit") {
+      for (const cycle of cardCyclesFor(state, asOf)) {
+        const remaining = monthly - toCents(budgetSpentFor(state, budget.category, cycle.start, cycle.end));
+        if (remaining > 0) transactions.push({ ...base(budget, cycle.end, remaining, "credit"), nextPaymentMonth: nextPaymentMonthFor(state, cycle.end) });
+      }
+      continue;
+    }
+    for (const period of state.periods) {
+      const end = paydayForPeriod(period);
+      if (period.closedAt || period.id < currentId || !end) continue;
+      const half = period.id.endsWith("h1") ? Math.floor(monthly / 2) : monthly - Math.floor(monthly / 2);
+      const remaining = half - toCents(budgetSpentFor(state, budget.category, previousDay(periodStart(period)), end));
+      const start = periodStart(period);
+      if (remaining > 0) transactions.push(base(budget, start < asOf ? asOf : start, remaining, "cash"));
+    }
+  }
+  return transactions;
+}
+
 export function recurringOccurrencesFor(state: AppState, asOf = defaultToday): Array<{ recurring: RecurringItem; date: string; transaction: Transaction }> {
   const items = new Map(state.recurring.map((item) => [item.id, item]));
   return projectedRecurringTransactions(state, asOf).filter((transaction) => transaction.date <= asOf).map((transaction) => ({ recurring: items.get(transaction.sourceRecurringId!)!, date: transaction.date, transaction })).sort((a, b) => a.date.localeCompare(b.date));
@@ -209,7 +268,7 @@ function cardLedger(state: AppState, asOf: string, includeForecast = true): Card
       add({ ...transaction, date, nextPaymentMonth }, true);
     }
   }
-  if (includeForecast) for (const transaction of projectedRecurringTransactions(state, asOf)) if (transaction.method === "credit") add(transaction, true);
+  if (includeForecast) for (const transaction of [...projectedRecurringTransactions(state, asOf), ...projectedBudgetTransactions(state, asOf)]) if (transaction.method === "credit") add(transaction, true);
   obligations.sort((left, right) => left.dueDate.localeCompare(right.dueDate) || left.transactionId.localeCompare(right.transactionId));
   const knownPrincipal = obligations.filter((item) => !item.projected).reduce((total, item) => total + item.amount, 0);
   const payments = transactions.filter((transaction) => transaction.method === "card_payment" && isConfirmedTransaction(transaction, asOf) && (!statement || transaction.date > statement.cutoffDate)).sort((left, right) => left.date.localeCompare(right.date) || left.id.localeCompare(right.id));
@@ -283,12 +342,15 @@ function forecastEventsFor(state: AppState, asOf: string): ForecastEvent[] {
   for (const transaction of transactions) if (!isConfirmedTransaction(transaction, asOf) && transaction.method !== "card_payment" && transaction.method !== "credit") insert(transaction, isPayroll(transaction) ? "salary" : transaction.method === "income" ? "income" : "expense");
   for (const period of state.periods) {
     const payday = paydayForPeriod(period);
-    if (period.closedAt || period.id < currentId || !payday || payday < (state.settings.nextPayday || asOf) || payday < (state.settings.balanceAsOf || asOf) || transactions.some((entry) => entry.periodId === period.id && isPayroll(entry))) continue;
-    if (positiveCents(state.settings.salary)) insert({ id: `forecast:salary:${period.id}`, date: payday, periodId: period.id, description: "Nómina estimada · después de renta y comida", method: "income", category: "Nómina", amount: state.settings.salary, installments: 1, shared: false, status: "planned", rentReserveAmount: pesos(Math.round(positiveCents(state.settings.monthlyRent) / 2)), foodReserveAmount: pesos(Math.round(positiveCents(state.settings.monthlyFood) / 2)) }, "salary", true, true);
+    // A payday between nextPayday and today without a recorded payroll stays pending (dated today) until
+    // it is confirmed, instead of silently disappearing from the forecast once its half-month ends.
+    if (period.closedAt || !payday || payday < (state.settings.nextPayday || asOf) || payday < (state.settings.balanceAsOf || asOf) || transactions.some((entry) => entry.periodId === period.id && isPayroll(entry))) continue;
+    const overdue = payday < asOf;
+    if (positiveCents(state.settings.salary)) insert({ id: `forecast:salary:${period.id}`, date: payday, periodId: period.id, description: overdue ? `Nómina del ${payday} sin registrar` : "Nómina estimada", method: "income", category: "Nómina", amount: state.settings.salary, installments: 1, shared: false, status: "planned", rentReserveAmount: pesos(Math.round(positiveCents(state.settings.monthlyRent) / 2)), foodReserveAmount: pesos(Math.round(positiveCents(state.settings.monthlyFood) / 2)) }, "salary", true, true);
     const gap = Math.max(0, Math.round(positiveCents(state.settings.monthlyRent) / 2) + Math.round(positiveCents(state.settings.monthlyFood) / 2) - positiveCents(state.settings.salary));
     if (gap) insert({ id: `forecast:essentials-gap:${period.id}`, date: payday, periodId: period.id, description: "Presupuesto básico sin cubrir con la nómina", method: "cash", category: "Renta y comida", amount: pesos(gap), installments: 1, shared: false, status: "planned" }, "expense");
   }
-  for (const transaction of projectedRecurringTransactions(state, asOf)) if (transaction.method === "cash") insert(transaction, "expense");
+  for (const transaction of [...projectedRecurringTransactions(state, asOf), ...projectedBudgetTransactions(state, asOf)]) if (transaction.method === "cash") insert(transaction, "expense");
   for (const transaction of transactions.filter((entry) => entry.method === "card_payment" && !isConfirmedTransaction(entry, asOf)).sort((a, b) => a.date.localeCompare(b.date))) {
     let available = toCents(transactionUserAmount(transaction));
     const target = transaction.paymentForPeriodId;
@@ -306,13 +368,18 @@ function forecastEventsFor(state: AppState, asOf: string): ForecastEvent[] {
   return events.sort((a, b) => a.date.localeCompare(b.date) || Number(b.transaction.method === "income") - Number(a.transaction.method === "income"));
 }
 
-export type LiquidityEvent = { date: string; kind: ForecastEvent["kind"]; label: string; amount: number; balance: number; estimated: boolean; periodId: string };
+export type LiquidityEvent = {
+  date: string; kind: ForecastEvent["kind"]; label: string; amount: number; balance: number; estimated: boolean; periodId: string;
+  /** Source movement: gross amount, category and the part reserved for rent or food (income only). */
+  transactionId: string; category: string; gross: number; reserved: number;
+};
 /** Both the half-month table and deadline alerts consume this same chronological cash projection. */
 export function liquidityTimelineFor(state: AppState, asOf = defaultToday): LiquidityEvent[] {
   let balances = actualBalances(state, asOf);
   return forecastEventsFor(state, asOf).map((event) => {
     const previous = balances.savings; balances = applyCashEffect(balances, event.transaction);
-    return { date: event.date, kind: event.kind, label: event.label, amount: pesos(balances.savings - previous), balance: pesos(balances.savings), estimated: event.estimated, periodId: event.periodId };
+    const reserved = event.transaction.affectsSavings === false ? 0 : reserveEffect(event.transaction) + foodReserveEffect(event.transaction);
+    return { date: event.date, kind: event.kind, label: event.label, amount: pesos(balances.savings - previous), balance: pesos(balances.savings), estimated: event.estimated, periodId: event.periodId, transactionId: event.transaction.id, category: event.transaction.category, gross: transactionUserAmount(event.transaction), reserved: pesos(reserved) };
   });
 }
 
@@ -421,6 +488,16 @@ export function normalizeState(input?: Partial<AppState> | null, asOf = defaultT
   }
   const periods = [...periodsById.values()].sort((a, b) => a.id.localeCompare(b.id));
   const warnings = new Set(input.migrationWarnings || []);
+  if (!Array.isArray(input.settings?.budgets)) {
+    // Plans saved before budgets existed reserved food from each payroll. The same money is now a
+    // "Mandado" budget: recorded grocery spending consumes it instead of a separate reserve.
+    settings.budgets = [];
+    if (positiveCents(settings.monthlyFood) > 0) {
+      settings.budgets.push({ id: "mandado", category: "Mandado", monthlyAmount: pesos(positiveCents(settings.monthlyFood)), method: "debit" });
+      warnings.add(`Tu presupuesto de comida (${formatMoney(settings.monthlyFood)} al mes) ahora es el presupuesto «Mandado». Las nóminas nuevas ya no lo apartan: la proyección descuenta lo que aún no gastas de él. Revísalo en Más → Presupuestos.`);
+      settings.monthlyFood = 0;
+    }
+  } else settings.budgets = input.settings!.budgets!.map((budget, index) => ({ id: budget.id || `budget-${index}`, category: String(budget.category || "Otro").trim(), monthlyAmount: pesos(positiveCents(budget.monthlyAmount)), method: budget.method === "credit" ? "credit" : "debit" }));
   for (const transaction of transactions) transaction.status ||= transaction.date > (input.updatedAt?.slice(0, 10) || asOf) || transaction.date > asOf ? "planned" : "confirmed";
   const state: AppState = { ...seed, ...input, version: 4, settings, periods, transactions, statements: (input.statements || []).map(validateStatement), recurring: (input.recurring || []).map((item, index) => ({ ...item, id: item.id || `recurring-${index}`, amount: pesos(positiveCents(item.amount)), day: Math.min(31, Math.max(1, Math.trunc(asNumber(item.day, 1)))), active: item.active !== false, method: item.method === "credit" ? "credit" : "debit" })), sync: { ...seed.sync, ...input.sync }, cardCalendar: [] };
   const lastObligationMonth = [...transactions.filter((entry) => entry.method === "credit").flatMap((entry) => buildPaymentScheduleFor(state, entry)), ...statementInstallmentSchedulesFor(state, asOf).flatMap((entry) => entry.payments)].map((entry) => entry.monthKey!).filter(validMonth).sort().at(-1);

@@ -1,4 +1,4 @@
-import type { BankStatement, BankStatementInstallment, BBVAParseResult, BBVAStatementDraft } from "./bbva-types";
+import type { BankStatement, BankStatementInstallment, BBVAParseResult, BBVAStatementDraft, StatementMovement } from "./bbva-types";
 
 type RecordValue = Record<string, unknown>;
 const MAX_AMOUNT = 1_000_000_000;
@@ -74,7 +74,18 @@ export function validateStatement(input: unknown): BankStatement {
   if (source.id !== undefined && source.id !== id) return fail("El identificador del estado no coincide con BBVA y su fecha de corte.");
   const importedAt = source.importedAt === undefined ? new Date().toISOString() : string(source.importedAt);
   if (!importedAt || !Number.isFinite(Date.parse(importedAt))) return fail("La fecha de importación es inválida.");
-  return { id, issuer: "BBVA", periodStart, cutoffDate, dueDate, paymentToAvoidInterest, minimumPayment, totalDebt, installmentBalance, installments, importedAt };
+  const optionalAmount = (value: unknown, label: string) => value === undefined || value === null ? undefined : amount(value, label);
+  const minimumPlusInstallments = optionalAmount(source.minimumPlusInstallments, "Pago mínimo + mensualidades");
+  if (minimumPlusInstallments !== undefined && (minimumPlusInstallments < minimumPayment || minimumPlusInstallments > paymentToAvoidInterest)) return fail("El pago mínimo + mensualidades debe estar entre el pago mínimo y el pago para no generar intereses.");
+  const creditLimit = optionalAmount(source.creditLimit, "Límite de crédito");
+  const annualInterestRate = optionalAmount(source.annualInterestRate, "Tasa de interés anual");
+  if (annualInterestRate !== undefined && annualInterestRate > 500) return fail("Tasa de interés anual: escribe el porcentaje anual, por ejemplo 58.52.");
+  return {
+    id, issuer: "BBVA", periodStart, cutoffDate, dueDate, paymentToAvoidInterest, minimumPayment, totalDebt, installmentBalance, installments, importedAt,
+    ...(minimumPlusInstallments !== undefined ? { minimumPlusInstallments } : {}),
+    ...(creditLimit !== undefined ? { creditLimit } : {}),
+    ...(annualInterestRate !== undefined ? { annualInterestRate } : {}),
+  };
 }
 
 export function statementFromDraft(draft: BBVAStatementDraft): BankStatement {
@@ -87,7 +98,7 @@ export function sameStatement(a: BankStatement, b: BankStatement): boolean {
   const canonical = (statement: BankStatement) => JSON.stringify([
     statement.issuer, statement.periodStart, statement.cutoffDate, statement.dueDate,
     statement.paymentToAvoidInterest, statement.minimumPayment, statement.totalDebt,
-    statement.installmentBalance,
+    statement.installmentBalance, statement.minimumPlusInstallments ?? null, statement.creditLimit ?? null, statement.annualInterestRate ?? null,
     statement.installments.map((item) => JSON.stringify([
       item.merchant, item.originalAmount, item.monthlyAmount, item.billedInstallment,
       item.totalInstallments, item.remainingBalance,
@@ -107,6 +118,7 @@ function parseObject(input: unknown): BBVAParseResult {
   const draft: BBVAStatementDraft = {
     periodStart: string(card.periodStart ?? period.from), cutoffDate: string(card.cutoffDate ?? period.to), dueDate: string(card.dueDate),
     paymentToAvoidInterest: numeric(card.paymentToAvoidInterest), minimumPayment: numeric(card.minimumPayment), totalDebt: numeric(card.totalDebt), installmentBalance: numeric(card.installmentBalance),
+    minimumPlusInstallments: numeric(card.minimumPlusInstallments), creditLimit: numeric(card.creditLimit), annualInterestRate: numeric(card.annualInterestRate),
     installments: (Array.isArray(rows) ? rows : []).map((row) => {
       const item = object(row);
       return { merchant: string(item.merchant), originalAmount: numeric(item.originalAmount), monthlyAmount: numeric(nested ? item.currentInstallment : item.monthlyAmount), billedInstallment: numeric(nested ? item.installmentNumber : item.billedInstallment), totalInstallments: numeric(nested ? item.installmentsTotal : item.totalInstallments), remainingBalance: numeric(nested ? item.remainingBalanceAfterStatement : item.remainingBalance) };
@@ -130,12 +142,87 @@ function parseDate(value: string): string {
   return month ? `${match[3]}-${String(month).padStart(2, "0")}-${match[1].padStart(2, "0")}` : "";
 }
 
+const MONEY = "\\$\\s?((?:\\d{1,3}(?:,\\d{3})+|\\d+)\\.\\d{2})";
+const DAY = "(\\d{1,2}-[a-z]{3}-\\d{4})";
+/** Footnote markers ("Pago mínimo: 4 $120.00") sit between labels and amounts in BBVA statements. */
+const NOTE = "(?:\\s*\\d{1,2})?";
+function money(text: string, label: string): number | undefined {
+  const match = text.match(new RegExp(`${label}:?${NOTE}\\s*${MONEY}`));
+  return match ? Number(match[1].replace(/,/g, "")) : undefined;
+}
+function cleanMerchant(value: string): string { return value.replace(/\s*;\s*tarjeta digital.*$/i, "").replace(/\s+/g, " ").trim(); }
+
+/**
+ * Reads the layout of a BBVA credit card statement (summary, MSI table and regular purchases).
+ * Every value is proposed for review; the statement must still reconcile before it is accepted.
+ */
+export function parseBBVAStatementText(text: string): BBVAParseResult | null {
+  const original = text.split(/\r?\n/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const lines = original.map(normalize);
+  const flat = lines.join("\n");
+  if (!/bbva/.test(flat) || !/pago para no generar intereses/.test(flat)) return null;
+  const draft = emptyBBVAStatement();
+  const warnings = ["Revisa que los importes coincidan con tu estado de cuenta antes de confirmar. Importar no registra pagos."];
+  const period = flat.match(new RegExp(`periodo:?\\s+${DAY}\\s+al\\s+${DAY}`));
+  if (period) { draft.periodStart = parseDate(period[1]); draft.cutoffDate = parseDate(period[2]); }
+  const cutoff = flat.match(new RegExp(`fecha de corte:?\\s+${DAY}`));
+  if (cutoff) draft.cutoffDate = parseDate(cutoff[1]);
+  const due = flat.match(new RegExp(`fecha limite de pago:?${NOTE}\\s*(?:[a-z]+,?\\s+)?${DAY}`));
+  if (due) draft.dueDate = parseDate(due[1]);
+  draft.paymentToAvoidInterest = money(flat, "pago para no generar intereses");
+  draft.minimumPlusInstallments = money(flat, "pago minimo \\+ compras y cargos? diferidos a meses");
+  draft.minimumPayment = money(flat, "pago minimo");
+  draft.installmentBalance = money(flat, "saldo cargos? a meses");
+  draft.totalDebt = money(flat, "saldo deudor total");
+  draft.creditLimit = money(flat, "limite de credito");
+  const rate = flat.match(/tasa de interes anual(?: variable)?[\s\S]{0,40}?sin iva\s+(\d{1,3}(?:\.\d{1,2})?)\s?%/);
+  if (rate) draft.annualInterestRate = Number(rate[1]);
+
+  // Rows: date, merchant, original amount, pending balance, required payment, "N de M", rate.
+  const msiRow = new RegExp(`^${DAY}\\s+(.+?)\\s+${MONEY}\\s+${MONEY}\\s+${MONEY}\\s+(\\d{1,3})\\s+de\\s+(\\d{1,3})(?:\\s+[\\d.]+\\s?%)?$`);
+  const purchaseRow = new RegExp(`^${DAY}\\s+${DAY}\\s+(.+?)\\s+([+-])\\s?${MONEY}$`);
+  let section: "msi" | "msi-interest" | "regular" | null = null;
+  const movements: StatementMovement[] = [];
+  let interestBearing = 0;
+  lines.forEach((line, index) => {
+    if (line.startsWith("compras y cargos diferidos a meses sin intereses")) { section = "msi"; return; }
+    if (line.startsWith("compras y cargos diferidos a meses con intereses")) { section = "msi-interest"; return; }
+    if (/^cargos,? ?compras y abonos regulares/.test(line)) { section = "regular"; return; }
+    if (/^total cargos|^atencion de quejas|^notas aclaratorias/.test(line)) { section = null; return; }
+    if (section === "msi" || section === "msi-interest") {
+      const row = line.match(msiRow);
+      if (!row) return;
+      if (section === "msi-interest") { interestBearing += 1; return; }
+      const merchant = cleanMerchant(original[index].slice(row[1].length).trim().split(/\s+\$/)[0]);
+      draft.installments.push({ merchant, originalAmount: Number(row[3].replace(/,/g, "")), remainingBalance: Number(row[4].replace(/,/g, "")), monthlyAmount: Number(row[5].replace(/,/g, "")), billedInstallment: Number(row[6]), totalInstallments: Number(row[7]) });
+      return;
+    }
+    if (section === "regular") {
+      const row = line.match(purchaseRow);
+      if (!row || row[4] !== "+") return;
+      const description = cleanMerchant(original[index].replace(/^\S+\s+\S+\s+/, "").replace(/\s+[+-]\s?\$\s?[\d,]+\.\d{2}$/, ""));
+      // "05 DE 06 COMERCIO" rows are installments of older purchases, not new spending.
+      if (/^\d{1,3} de \d{1,3} /i.test(description)) return;
+      movements.push({ date: parseDate(row[1]), description, amount: Number(row[5].replace(/,/g, "")) });
+    }
+  });
+  if (draft.installmentBalance === undefined && draft.installments.length) draft.installmentBalance = draft.installments.reduce((total, item) => total + centavos(item.remainingBalance || 0), 0) / 100;
+  if (draft.totalDebt === undefined && draft.paymentToAvoidInterest !== undefined && draft.installmentBalance !== undefined) draft.totalDebt = (centavos(draft.paymentToAvoidInterest) + centavos(draft.installmentBalance)) / 100;
+  if (interestBearing) warnings.push(`El estado tiene ${interestBearing} compra(s) a meses CON intereses. Este plan solo modela meses sin intereses: revisa esos cargos manualmente.`);
+  if (draft.installmentBalance && !draft.installments.length) warnings.push("No se encontró el detalle de compras a meses. Agrégalas manualmente para que concilie.");
+  const missing = [["fecha de corte", draft.cutoffDate], ["fecha límite", draft.dueDate], ["pago para no generar intereses", draft.paymentToAvoidInterest], ["pago mínimo", draft.minimumPayment]].filter(([, value]) => value === undefined || value === "").map(([label]) => label);
+  if (missing.length) warnings.push(`No se reconoció: ${missing.join(", ")}. Complétalo manualmente.`);
+  return { draft, warnings, movements };
+}
+
 /** Label-only extraction: no guessing which numeric columns contain debt or payments. */
 export function parseBBVAText(text: string): BBVAParseResult {
+  const statement = parseBBVAStatementText(text);
+  if (statement) return statement;
   const draft = emptyBBVAStatement();
   const lines = text.split(/\r?\n/).map(normalize).filter(Boolean);
   const warnings = ["El formato del PDF puede variar. Solo se proponen campos con etiquetas reconocidas; completa lo que falte y revisa los MSI manualmente. No se importan movimientos ni pagos desde el texto."];
-  const labels: Record<Exclude<keyof BBVAStatementDraft, "installments">, string[]> = {
+  const labels: Record<"periodStart" | "cutoffDate" | "dueDate" | "paymentToAvoidInterest" | "minimumPayment" | "totalDebt" | "installmentBalance", string[]> = {
     periodStart: ["inicio del periodo", "fecha inicial del periodo"], cutoffDate: ["fecha de corte", "corte"], dueDate: ["fecha limite de pago", "fecha limite"],
     paymentToAvoidInterest: ["pago para no generar intereses"], minimumPayment: ["pago minimo"], totalDebt: ["deuda total", "saldo total adeudado", "saldo total"], installmentBalance: ["saldo msi despues del corte", "saldo diferido a meses", "saldo pendiente a meses", "saldo de compras a meses sin intereses"],
   };

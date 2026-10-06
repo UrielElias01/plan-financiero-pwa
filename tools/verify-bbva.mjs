@@ -212,6 +212,62 @@ test("borradores vacíos son independientes y no confirman importes faltantes", 
   assert.throws(() => statementFromDraft(emptyBBVAStatement()), /fecha válida/);
 });
 
+// Invented statement that follows the BBVA layout as PDF.js extracts it: footnote markers between
+// labels and amounts, weekday before the due date, MSI table and regular movements.
+const bbvaLayout = ({ withTotal = true, interestSection = false } = {}) => [
+  "BBVA MEXICO, S.A. ESTADO FICTICIO PARA PRUEBAS", "TU PAGO REQUERIDO ESTE PERIODO",
+  "Periodo:   04-feb-2032 al 03-mar-2032", "Fecha de corte:   03-mar-2032", "Número de días en el periodo   29 días",
+  "Fecha límite de pago:", "1   martes, 23-mar-2032", "Pago para no generar intereses:", "2   $1,500.00",
+  "Pago mínimo + compras y cargo diferidos a meses: 3   $300.00", "Pago mínimo: 4   $120.00",
+  "El pago mínimo   $120.00   90 meses   $9,999.99",
+  "CAT: 10   TASA DE INTERES ANUAL VARIABLE", "2.1% Sin IVA   60.00%",
+  "Saldo cargos regulares:   $1,500.00", "Saldo cargo a meses:   $450.50",
+  ...(withTotal ? ["Saldo deudor total: 11   $1,950.50"] : []),
+  "Límite de crédito:   $10,000.00", "Crédito disponible:   $8,049.50",
+  "COMPRAS Y CARGOS DIFERIDOS A MESES SIN INTERESES   Tarjeta titular: XXXXXXXXXXXX0000",
+  "05-ene-2032   TIENDA FICTICIA UNO   $600.00   $300.00   $150.00   2 de 4   0.00%",
+  "10-feb-2032   COMERCIO DE PRUEBA ; Tarjeta Digital ***0000   $301.00   $150.50   $150.50   1 de 2   0.00%",
+  ...(interestSection ? ["COMPRAS Y CARGOS DIFERIDOS A MESES CON INTERESES", "01-ene-2032   PRESTAMO FICTICIO   $1,000.00   $800.00   $100.00   2 de 10   30.00%"] : []),
+  "CARGOS,COMPRAS Y ABONOS REGULARES(NO A MESES)   Tarjeta titular: XXXXXXXXXXXX0000",
+  "04-feb-2032   05-feb-2032   SORIANA PRUEBA   + $1,000.00",
+  "06-feb-2032   07-feb-2032   USO DE PUNTOS TIENDA   - $10.00",
+  "16-feb-2032   17-feb-2032   BMOVIL.PAGO TDC   - $500.00",
+  "IVA : $   0.00   Interes: $ 0.00 Comisiones:$0.00 Capital:$500.00",
+  "10-feb-2032   11-feb-2032   COMERCIO DE PRUEBA A 02 MSI   + $301.00",
+  "Notas: Ver notas en la sección “NOTAS ACLARATORIAS” en este estado de cuenta.",
+  "CARGOS,COMPRAS Y ABONOS REGULARES(NO A MESES)   Tarjeta titular: XXXXXXXXXXXX0000",
+  "20-feb-2032   21-feb-2032   DLO*UBER RIDE ; Tarjeta Digital ***0000   + $85.50",
+  "03-mar-2032   05-mar-2032   02 DE 04 TIENDA FICTICIA UNO   + $150.00",
+  "Total cargos   $1,536.50", "Total abonos   -$510.00",
+].join("\n");
+
+test("formato BBVA: lee resumen con notas al pie, MSI y compras, y el estado concilia", () => {
+  const parsed = parseBBVAText(bbvaLayout());
+  const { draft } = parsed;
+  assert.deepEqual([draft.periodStart, draft.cutoffDate, draft.dueDate], ["2032-02-04", "2032-03-03", "2032-03-23"]);
+  assert.deepEqual([draft.paymentToAvoidInterest, draft.minimumPayment, draft.minimumPlusInstallments, draft.installmentBalance, draft.totalDebt, draft.creditLimit, draft.annualInterestRate], [1500, 120, 300, 450.5, 1950.5, 10000, 60]);
+  assert.deepEqual(draft.installments.map((item) => [item.merchant, item.originalAmount, item.remainingBalance, item.monthlyAmount, item.billedInstallment, item.totalInstallments]), [
+    ["TIENDA FICTICIA UNO", 600, 300, 150, 2, 4], ["COMERCIO DE PRUEBA", 301, 150.5, 150.5, 1, 2],
+  ]);
+  const statement = statementFromDraft(draft);
+  assert.equal(statement.minimumPlusInstallments, 300);
+  assert.equal(statement.annualInterestRate, 60);
+  // Payments, points and "02 DE 04" installment rows are not new spending.
+  assert.deepEqual(parsed.movements, [
+    { date: "2032-02-04", description: "SORIANA PRUEBA", amount: 1000 },
+    { date: "2032-02-10", description: "COMERCIO DE PRUEBA A 02 MSI", amount: 301 },
+    { date: "2032-02-20", description: "DLO*UBER RIDE", amount: 85.5 },
+  ]);
+});
+
+test("formato BBVA: sin deuda total la calcula del pago y MSI; MSI con intereses se advierte", () => {
+  const parsed = parseBBVAText(bbvaLayout({ withTotal: false, interestSection: true }));
+  assert.equal(parsed.draft.totalDebt, 1950.5);
+  assert.equal(parsed.draft.installments.length, 2);
+  assert.match(parsed.warnings.join(" "), /CON intereses/);
+  assert.throws(() => validateStatement({ ...fixture(), minimumPlusInstallments: 5 }), /entre el pago mínimo/);
+});
+
 // Optional selectable-text fixture for testing the real lazy PDF.js worker in Vite:
 // tsx tools/verify-bbva.mjs --write-pdf-fixture <absolute-output.pdf>
 // It is intentionally generated outside the repository and contains no personal data.

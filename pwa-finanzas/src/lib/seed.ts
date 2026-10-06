@@ -32,6 +32,7 @@ export function cloneSeed(asOf = dateInputValue()): AppState {
   return {
     version: 4, updatedAt: new Date().toISOString(),
     settings: {
+      budgets: [],
       openingSavings: 0, openingRentReserve: 0, openingCardDebt: 0,
       openingFoodReserve: 0, foodReserve: 0, monthlyFood: 0,
       balanceAsOf: asOf,

@@ -1,6 +1,16 @@
 import type { BankStatement } from "./bbva-types";
 
+/** Monthly spending limit for a category. The forecast only projects what is still unspent. */
+export type Budget = {
+  id: string;
+  category: string;
+  monthlyAmount: number;
+  /** "credit": the remainder is billed in each card cycle. "debit": half is spent each half-month. */
+  method: "credit" | "debit";
+};
+
 export type Settings = {
+  budgets?: Budget[];
   balanceAsOf?: string;
   balanceIncludedTransactionIds?: string[];
   nextPayday?: string;
@@ -100,6 +110,9 @@ export type Transaction = {
   fundingSource?: "savings" | "rent_reserve" | "food_reserve";
   status?: "planned" | "confirmed";
   remainingPrincipalAmount?: number;
+  /** Stable identity of an imported row (statement movement or Mandado ticket) to avoid importing it twice. */
+  externalId?: string;
+  source?: "manual" | "statement" | "mandado";
 };
 
 export type CardCalendarEntry = {
@@ -179,4 +192,4 @@ export type MonthlyReport = {
   cardTotal: number;
 };
 
-export type ViewId = "dashboard" | "periods" | "transactions" | "recurring" | "card" | "statements" | "reports" | "settings" | "guide";
+export type ViewId = "home" | "movements" | "card" | "more" | "subscriptions" | "budgets" | "statements" | "mandado" | "settings" | "backup";

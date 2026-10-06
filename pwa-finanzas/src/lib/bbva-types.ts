@@ -22,6 +22,11 @@ export type BankStatement = {
   installmentBalance: number;
   installments: BankStatementInstallment[];
   importedAt: string;
+  /** "Pago mínimo + compras y cargos diferidos a meses": paying less makes the MSI generate interest. */
+  minimumPlusInstallments?: number;
+  creditLimit?: number;
+  /** Annual ordinary rate printed on the statement, in percent and without VAT. */
+  annualInterestRate?: number;
 };
 
 export type BBVAInstallmentDraft = { merchant: string } & Partial<Omit<BankStatementInstallment, "id" | "merchant">>;
@@ -33,7 +38,13 @@ export type BBVAStatementDraft = {
   minimumPayment?: number;
   totalDebt?: number;
   installmentBalance?: number;
+  minimumPlusInstallments?: number;
+  creditLimit?: number;
+  annualInterestRate?: number;
   installments: BBVAInstallmentDraft[];
 };
 
-export type BBVAParseResult = { draft: BBVAStatementDraft; warnings: string[] };
+/** A regular purchase listed in the statement. Payments, points and installment rows are excluded. */
+export type StatementMovement = { date: string; description: string; amount: number };
+
+export type BBVAParseResult = { draft: BBVAStatementDraft; warnings: string[]; movements?: StatementMovement[] };
