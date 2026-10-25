@@ -113,7 +113,7 @@ export function Budgets({ state, today, onSave }: { state: AppState; today: stri
           <button className="icon-btn" type="button" aria-label={`Quitar ${row.category}`} onClick={() => setRows(rows.filter((_, position) => position !== index))}><Trash2 size={16} /></button>
         </div>
         <div className="grid-2">
-          <Field label="Al mes"><input className="input" type="number" min="0" step="1" value={row.monthlyAmount || ""} onChange={(event) => update(index, { monthlyAmount: asNumber(event.target.value) })} /></Field>
+          <Field label="Al mes" hint={row.monthlyAmount ? `${formatMoney(row.monthlyAmount / 2)} por quincena` : "Si piensas por quincena, escribe el doble"}><input className="input" type="number" min="0" step="1" value={row.monthlyAmount || ""} onChange={(event) => update(index, { monthlyAmount: asNumber(event.target.value) })} /></Field>
           <Field label="Lo pagas con"><Segmented label="Medio" value={row.method} onChange={(method) => update(index, { method })} options={[["credit", "Tarjeta"], ["debit", "Débito"]]} /></Field>
         </div>
         <p className="tiny muted">Este mes llevas {formatMoney(spent(current, row.category))}{spent(previous, row.category) ? ` · el mes pasado ${formatMoney(spent(previous, row.category))}` : ""}</p>
